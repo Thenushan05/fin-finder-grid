@@ -129,11 +129,11 @@ export const mockGear: GearType[] = [
 ];
 
 export const mockHotspots: HotspotData[] = [
-  { lat: 6.5, lng: 80.2, probability: 0.85, species: "YFT", depth: 180, sst: 28.5, chl: 0.3 },
-  { lat: 7.2, lng: 81.5, probability: 0.72, species: "SKJ", depth: 120, sst: 29.1, chl: 0.4 },
-  { lat: 5.8, lng: 79.8, probability: 0.68, species: "BET", depth: 250, sst: 26.8, chl: 0.2 },
-  { lat: 8.1, lng: 82.3, probability: 0.91, species: "YFT", depth: 200, sst: 28.9, chl: 0.35 },
-  { lat: 6.9, lng: 80.8, probability: 0.76, species: "COM", depth: 45, sst: 29.5, chl: 0.5 },
+  { lat: 6.2, lng: 81.8, probability: 0.85, species: "YFT", depth: 180, sst: 28.5, chl: 0.3 }, // Bay of Bengal - East of Sri Lanka
+  { lat: 8.5, lng: 82.5, probability: 0.72, species: "SKJ", depth: 120, sst: 29.1, chl: 0.4 }, // Bay of Bengal - Northeast
+  { lat: 5.5, lng: 80.5, probability: 0.68, species: "BET", depth: 250, sst: 26.8, chl: 0.2 }, // Indian Ocean - South
+  { lat: 7.8, lng: 83.2, probability: 0.91, species: "YFT", depth: 200, sst: 28.9, chl: 0.35 }, // Bay of Bengal - East
+  { lat: 6.5, lng: 79.2, probability: 0.76, species: "COM", depth: 45, sst: 29.5, chl: 0.5 }, // Laccadive Sea - West
 ];
 
 export const mockPriceData = [
@@ -159,3 +159,63 @@ export function getCurrentMonsoon(): string {
   if (monsoonSeasons.inter1.months.includes(month)) return monsoonSeasons.inter1.name;
   return monsoonSeasons.inter2.name;
 }
+
+// Weather Hazards
+export interface WeatherHazard {
+  id: string;
+  lat: number;
+  lng: number;
+  type: "storm" | "high-waves";
+  severity: "low" | "medium" | "high";
+  description: string;
+  waveHeight?: number; // in meters
+  windSpeed?: number; // in knots
+}
+
+export const mockWeatherHazards: WeatherHazard[] = [
+  {
+    id: "storm-1",
+    lat: 7.5,
+    lng: 82.0,
+    type: "storm",
+    severity: "high",
+    description: "Tropical storm warning in Bay of Bengal",
+    windSpeed: 45,
+  },
+  {
+    id: "storm-2",
+    lat: 6.0,
+    lng: 81.0,
+    type: "storm",
+    severity: "medium",
+    description: "Thunderstorm activity east of Sri Lanka",
+    windSpeed: 30,
+  },
+  {
+    id: "waves-1",
+    lat: 8.8,
+    lng: 81.5,
+    type: "high-waves",
+    severity: "high",
+    description: "High wave warning in northeastern waters",
+    waveHeight: 4.5,
+  },
+  {
+    id: "waves-2",
+    lat: 5.8,
+    lng: 79.5,
+    type: "high-waves",
+    severity: "medium",
+    description: "Moderate wave conditions southwest of Sri Lanka",
+    waveHeight: 3.0,
+  },
+  {
+    id: "waves-3",
+    lat: 7.0,
+    lng: 83.5,
+    type: "high-waves",
+    severity: "low",
+    description: "Choppy sea conditions in eastern Bay of Bengal",
+    waveHeight: 2.0,
+  },
+];

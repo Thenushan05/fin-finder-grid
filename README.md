@@ -1,73 +1,126 @@
-# Welcome to your Lovable project
+# FinFinder - Fish Hotspot Prediction Platform
 
-## Project info
+![FinFinder](https://img.shields.io/badge/AI-Powered-blue) ![React](https://img.shields.io/badge/React-18.3-61dafb) ![TypeScript](https://img.shields.io/badge/TypeScript-5.8-3178c6)
 
-**URL**: https://lovable.dev/projects/f3386f34-8132-4093-9800-3bd711ab60b0
+## 🐟 About
 
-## How can I edit this code?
+FinFinder is an AI-powered fish hotspot prediction platform that uses satellite data and machine learning to identify optimal fishing zones. The platform combines real-time environmental data (SST, chlorophyll levels, depth) with market intelligence to help fishermen maximize their catch efficiency.
 
-There are several ways of editing your application.
+## ✨ Features
 
-**Use Lovable**
+- **🗺️ Interactive Hotspot Map**: Real-time visualization of high-probability fishing zones using Mapbox
+- **📍 Navigation System**: GPS-based route planning with distance calculation in Nautical Miles
+- **📊 Dashboard Analytics**: Overview of active hotspots, species tracking, and market trends
+- **🐠 Species & Spawning Info**: Detailed information about fish species and spawning patterns
+- **⚙️ Gear Management**: Track and manage fishing equipment
+- **💹 Market Trends**: Real-time fish market price tracking and analysis
+- **🚢 Trip Planner**: Voyage planning with fuel cost estimation and route optimization
 
-Simply visit the [Lovable Project](https://lovable.dev/projects/f3386f34-8132-4093-9800-3bd711ab60b0) and start prompting.
+## 🛠️ Technologies
 
-Changes made via Lovable will be committed automatically to this repo.
+This project is built with modern web technologies:
 
-**Use your preferred IDE**
+- **Frontend Framework**: React 18.3 with TypeScript
+- **Build Tool**: Vite 5.4
+- **UI Components**: shadcn/ui with Radix UI
+- **Styling**: Tailwind CSS
+- **Maps**: Mapbox GL JS via react-map-gl
+- **State Management**: React Query (TanStack Query)
+- **Routing**: React Router v6
+- **Icons**: Lucide React
 
-If you want to work locally using your own IDE, you can clone this repo and push changes. Pushed changes will also be reflected in Lovable.
+## 🚀 Getting Started
 
-The only requirement is having Node.js & npm installed - [install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating)
+### Prerequisites
 
-Follow these steps:
+- Node.js 18+ and npm installed ([install with nvm](https://github.com/nvm-sh/nvm#installing-and-updating))
+- Mapbox API token (get one at [mapbox.com](https://www.mapbox.com/))
+
+### Installation
 
 ```sh
-# Step 1: Clone the repository using the project's Git URL.
+# Clone the repository
 git clone <YOUR_GIT_URL>
 
-# Step 2: Navigate to the project directory.
-cd <YOUR_PROJECT_NAME>
+# Navigate to the project directory
+cd fin-finder-grid
 
-# Step 3: Install the necessary dependencies.
-npm i
+# Install dependencies
+npm install
 
-# Step 4: Start the development server with auto-reloading and an instant preview.
+# Create .env file and add your Mapbox token
+echo "VITE_MAPBOX_TOKEN=your_mapbox_token_here" > .env
+
+# Start the development server
 npm run dev
 ```
 
-**Edit a file directly in GitHub**
+The application will be available at `http://localhost:8080`
 
-- Navigate to the desired file(s).
-- Click the "Edit" button (pencil icon) at the top right of the file view.
-- Make your changes and commit the changes.
+## 📁 Project Structure
 
-**Use GitHub Codespaces**
+```
+fin-finder-grid/
+├── src/
+│   ├── components/       # Reusable UI components
+│   ├── pages/           # Page components (Home, Dashboard, HotspotMap, etc.)
+│   ├── services/        # API services and mock data
+│   └── main.tsx         # Application entry point
+├── public/              # Static assets
+└── index.html           # HTML template
+```
 
-- Navigate to the main page of your repository.
-- Click on the "Code" button (green button) near the top right.
-- Select the "Codespaces" tab.
-- Click on "New codespace" to launch a new Codespace environment.
-- Edit files directly within the Codespace and commit and push your changes once you're done.
+## 🔑 Environment Variables
 
-## What technologies are used for this project?
+Create a `.env` file in the root directory:
 
-This project is built with:
+```env
+VITE_MAPBOX_TOKEN=your_mapbox_token_here
+VITE_GOOGLE_MAPS_API_KEY=your_google_maps_key_here (optional)
+```
 
-- Vite
-- TypeScript
-- React
-- shadcn-ui
-- Tailwind CSS
+## 📦 Available Scripts
 
-## How can I deploy this project?
+```sh
+npm run dev          # Start development server
+npm run build        # Build for production
+npm run preview      # Preview production build
+npm run lint         # Run ESLint
+```
 
-Simply open [Lovable](https://lovable.dev/projects/f3386f34-8132-4093-9800-3bd711ab60b0) and click on Share -> Publish.
+## 🎨 Features in Detail
 
-## Can I connect a custom domain to my Lovable project?
+### Hotspot Map
+- Interactive map showing predicted fishing hotspots
+- Click on markers to view detailed environmental conditions
+- Real-time navigation with current location tracking
+- Distance calculation in Nautical Miles
 
-Yes, you can!
+### Dashboard
+- Quick stats on active hotspots and species
+- Current monsoon season information
+- Market trend indicators
+- Quick access to all features
 
-To connect a domain, navigate to Project > Settings > Domains and click Connect Domain.
+### Trip Planner
+- Plan fishing trips with route optimization
+- Fuel cost estimation
+- Weather and sea condition forecasts
 
-Read more here: [Setting up a custom domain](https://docs.lovable.dev/features/custom-domain#custom-domain)
+## 🤝 Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+## 📄 License
+
+This project is open source and available under the MIT License.
+
+## 🙏 Acknowledgments
+
+- Satellite data from various oceanographic sources
+- Map tiles and services by Mapbox
+- UI components by shadcn/ui
+
+---
+
+**Built with ❤️ for the fishing community**
