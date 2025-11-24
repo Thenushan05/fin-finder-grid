@@ -165,7 +165,7 @@ export interface WeatherHazard {
   id: string;
   lat: number;
   lng: number;
-  type: "storm" | "high-waves";
+  type: "storm" | "high-waves" | "tornado";
   severity: "low" | "medium" | "high";
   description: string;
   waveHeight?: number; // in meters
@@ -217,5 +217,23 @@ export const mockWeatherHazards: WeatherHazard[] = [
     severity: "low",
     description: "Choppy sea conditions in eastern Bay of Bengal",
     waveHeight: 2.0,
+  },
+  {
+    id: "tornado-1",
+    lat: 6.8,
+    lng: 82.2,
+    type: "tornado",
+    severity: "high",
+    description: "Waterspout/Tornado warning - extreme danger",
+    windSpeed: 65,
+  },
+  {
+    id: "tornado-2",
+    lat: 8.2,
+    lng: 80.8,
+    type: "tornado",
+    severity: "medium",
+    description: "Funnel cloud spotted",
+    windSpeed: 45,
   },
 ];
