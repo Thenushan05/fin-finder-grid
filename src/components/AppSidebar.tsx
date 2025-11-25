@@ -13,7 +13,7 @@ import {
 } from "@/components/ui/sidebar";
 
 const items = [
-  { title: "Home", url: "/", icon: Home },
+  { title: "Home", url: "/home", icon: Home },
   { title: "Dashboard", url: "/dashboard", icon: TrendingUp },
   { title: "Hotspot Map", url: "/hotspot-map", icon: Map },
   { title: "Species & Spawning", url: "/species", icon: Fish },

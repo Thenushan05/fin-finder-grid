@@ -13,6 +13,7 @@ import Gear from "./pages/Gear";
 import Market from "./pages/Market";
 import TripPlanner from "./pages/TripPlanner";
 import NotFound from "./pages/NotFound";
+import { MapProvider } from "@/context/MapContext";
 
 const queryClient = new QueryClient();
 
@@ -21,23 +22,25 @@ const App = () => (
     <TooltipProvider>
       <Toaster />
       <Sonner />
-      <BrowserRouter>
-        <Routes>
-          {/* Public Landing Page */}
-          <Route path="/" element={<Landing />} />
+      <MapProvider>
+        <BrowserRouter>
+          <Routes>
+            {/* Public Landing Page */}
+            <Route path="/" element={<Landing />} />
 
-          {/* App Routes wrapped in Layout */}
-          <Route path="/home" element={<Layout><Home /></Layout>} />
-          <Route path="/dashboard" element={<Layout><Dashboard /></Layout>} />
-          <Route path="/hotspot-map" element={<Layout><HotspotMap /></Layout>} />
-          <Route path="/species" element={<Layout><Species /></Layout>} />
-          <Route path="/gear" element={<Layout><Gear /></Layout>} />
-          <Route path="/market" element={<Layout><Market /></Layout>} />
-          <Route path="/trip-planner" element={<Layout><TripPlanner /></Layout>} />
+            {/* App Routes wrapped in Layout */}
+            <Route path="/home" element={<Layout><Home /></Layout>} />
+            <Route path="/dashboard" element={<Layout><Dashboard /></Layout>} />
+            <Route path="/hotspot-map" element={<Layout><HotspotMap /></Layout>} />
+            <Route path="/species" element={<Layout><Species /></Layout>} />
+            <Route path="/gear" element={<Layout><Gear /></Layout>} />
+            <Route path="/market" element={<Layout><Market /></Layout>} />
+            <Route path="/trip-planner" element={<Layout><TripPlanner /></Layout>} />
 
-          <Route path="*" element={<NotFound />} />
-        </Routes>
-      </BrowserRouter>
+            <Route path="*" element={<NotFound />} />
+          </Routes>
+        </BrowserRouter>
+      </MapProvider>
     </TooltipProvider>
   </QueryClientProvider>
 );
