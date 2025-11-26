@@ -18,7 +18,7 @@ export async function fetchMarineData(
   url.searchParams.set("latitude", String(latitude));
   url.searchParams.set("longitude", String(longitude));
 
-  const hourly = options?.hourly ?? ["wave_height", "wave_direction"];
+  const hourly = options?.hourly ?? ["wave_height", "wave_direction", "sea_level_height_msl"];
   const daily = options?.daily;
   const timezone = options?.timezone ?? "UTC";
 
@@ -170,6 +170,81 @@ export async function fetchSeaSurfaceTemperature(
   return {
     time: times,
     sea_surface_temperature: sstValues,
+    rawHourly: hourly,
+    meta: {
+      latitude: m.latitude,
+      longitude: m.longitude,
+      timezone: m.timezone,
+      utcOffsetSeconds: m.utcOffsetSeconds,
+    },
+  };
+}
+
+/**
+ * Convenience helper to fetch hourly sea level height (MSL) for a location.
+ * Returns parsed Date objects for timestamps and numeric sea level height values (or nulls when missing).
+ */
+export async function fetchSeaLevelHeight(
+  latitude: number,
+  longitude: number,
+  options?: { timezone?: string }
+) {
+  const timezone = options?.timezone ?? "UTC";
+  const m = await fetchMarineData(latitude, longitude, {
+    hourly: ["sea_level_height_msl"],
+    timezone,
+  });
+
+  const hourly = m.hourly ?? null;
+
+  if (!hourly || !Array.isArray(hourly.time)) {
+    return {
+      time: [] as Date[],
+      sea_level_height_msl: [] as Array<number | null>,
+      rawHourly: hourly,
+      meta: {
+        latitude: m.latitude,
+        longitude: m.longitude,
+        timezone: m.timezone,
+        utcOffsetSeconds: m.utcOffsetSeconds,
+      },
+    };
+  }
+
+  // Map time values to Date objects. Handle ISO strings and unix timestamps (seconds or milliseconds).
+  const parseTimeValue = (t: any) => {
+    if (t === null || t === undefined) return null;
+    // numeric-like strings or numbers
+    const n = Number(t);
+    if (!Number.isNaN(n)) {
+      // Heuristic: values < 1e12 are seconds, >=1e12 are milliseconds
+      if (n < 1e12) return new Date(n * 1000);
+      return new Date(n);
+    }
+    // Fallback: string parse (ISO 8601)
+    try {
+      return new Date(String(t));
+    } catch (e) {
+      return null;
+    }
+  };
+
+  // Keep parsed time entries (possibly null) to preserve index alignment with sea level height array
+  const times: Array<Date | null> = hourly.time.map((t: any) =>
+    parseTimeValue(t)
+  );
+
+  const seaLevelValues: Array<number | null> = Array.isArray(
+    hourly.sea_level_height_msl
+  )
+    ? hourly.sea_level_height_msl.map((v: any) =>
+        v === null || v === undefined || v === "" ? null : Number(v)
+      )
+    : [];
+
+  return {
+    time: times,
+    sea_level_height_msl: seaLevelValues,
     rawHourly: hourly,
     meta: {
       latitude: m.latitude,

@@ -36,6 +36,7 @@ import { fetchOpenMeteo, type OpenMeteoResult } from "@/services/openMeteo";
 import {
   fetchMarineData,
   fetchSeaSurfaceTemperature,
+  fetchSeaLevelHeight,
   type MarineResult,
 } from "@/services/openMeteoMarine";
 import {
@@ -56,6 +57,8 @@ import Map, {
   ScaleControl,
   MapRef,
 } from "react-map-gl";
+import { useRef } from "react";
+import JaffnaHotspotControls from "@/components/JaffnaHotspotControls";
 import "mapbox-gl/dist/mapbox-gl.css";
 import type { LineLayer } from "react-map-gl";
 
@@ -159,6 +162,8 @@ export default function HotspotMap() {
   const { theme } = useTheme();
   const isDarkMode = theme === "dark";
 
+  const mapRef = useRef<MapRef | null>(null);
+
   const [userLocation, setUserLocation] = useState<{
     lat: number;
     lng: number;
@@ -168,7 +173,7 @@ export default function HotspotMap() {
     timestamp?: number | null;
     source?: "geolocation" | "manual" | null;
   } | null>(null);
-  
+
   // When user clicks map we hold the click as "pending" until they confirm
   const [pendingManualDestination, setPendingManualDestination] = useState<{
     lat: number;
@@ -186,9 +191,17 @@ export default function HotspotMap() {
   );
   const [destinationSSTLoading, setDestinationSSTLoading] = useState(false);
 
-  const [destinationMarine, setDestinationMarine] = useState<MarineResult | null>(
+  const [destinationSeaLevel, setDestinationSeaLevel] = useState<number | null>(
     null
   );
+  const [destinationSeaLevelError, setDestinationSeaLevelError] = useState<
+    string | null
+  >(null);
+  const [destinationSeaLevelLoading, setDestinationSeaLevelLoading] =
+    useState(false);
+
+  const [destinationMarine, setDestinationMarine] =
+    useState<MarineResult | null>(null);
   const [destinationMarineError, setDestinationMarineError] = useState<
     string | null
   >(null);
@@ -257,17 +270,21 @@ export default function HotspotMap() {
       // Only fetch if we have a specific target (hotspot or manual point)
       if (!manualDestination && !selectedHotspot) {
         setDestinationSST(null);
+        setDestinationSeaLevel(null);
         setDestinationMarine(null);
         return;
       }
 
       setDestinationSSTLoading(true);
       setDestinationSSTError(null);
+      setDestinationSeaLevelLoading(true);
+      setDestinationSeaLevelError(null);
       setDestinationMarineError(null);
 
       try {
-        const [sstRes, marine] = await Promise.all([
+        const [sstRes, seaLevelRes, marine] = await Promise.all([
           fetchSeaSurfaceTemperature(destination.lat, destination.lng),
+          fetchSeaLevelHeight(destination.lat, destination.lng),
           fetchMarineData(destination.lat, destination.lng, {
             hourly: [
               "wave_height",
@@ -282,22 +299,34 @@ export default function HotspotMap() {
         if (mounted) {
           // Extract current SST (closest to now)
           const now = new Date();
-          const idx = sstRes?.time
+          const sstIdx = sstRes?.time
             ? findNearestHourlyIndex(sstRes.time, now)
             : 0;
-          const currentSST = sstRes?.sea_surface_temperature?.[idx] ?? null;
+          const currentSST = sstRes?.sea_surface_temperature?.[sstIdx] ?? null;
+
+          // Extract current sea level height (closest to now)
+          const seaLevelIdx = seaLevelRes?.time
+            ? findNearestHourlyIndex(seaLevelRes.time, now)
+            : 0;
+          const currentSeaLevel =
+            seaLevelRes?.sea_level_height_msl?.[seaLevelIdx] ?? null;
 
           setDestinationSST(currentSST);
+          setDestinationSeaLevel(currentSeaLevel);
           setDestinationMarine(marine);
         }
       } catch (err) {
         console.error("Failed to fetch destination data", err);
         if (mounted) {
           setDestinationSSTError("Failed to load data");
+          setDestinationSeaLevelError("Failed to load data");
           setDestinationMarineError("Failed to load data");
         }
       } finally {
-        if (mounted) setDestinationSSTLoading(false);
+        if (mounted) {
+          setDestinationSSTLoading(false);
+          setDestinationSeaLevelLoading(false);
+        }
       }
     };
 
@@ -717,7 +746,6 @@ export default function HotspotMap() {
   );
   const [weatherError, setWeatherError] = useState<string | null>(null);
 
-
   // Determine the coordinates we should fetch weather for: manualDestination overrides hotspot
   // IMPORTANT: do not fetch on map pan/scroll — return null when neither manual nor hotspot is selected
   const targetCoords = useMemo(() => {
@@ -854,12 +882,20 @@ export default function HotspotMap() {
             // Fallback: try to read directly from the raw marine response `m.hourly` (ISO time strings)
             try {
               if (m?.hourly && Array.isArray(m.hourly.time)) {
-                const fallbackIdx = findNearestHourlyIndex(m.hourly.time, new Date());
-                const fallbackVal = m.hourly.sea_surface_temperature?.[fallbackIdx];
+                const fallbackIdx = findNearestHourlyIndex(
+                  m.hourly.time,
+                  new Date()
+                );
+                const fallbackVal =
+                  m.hourly.sea_surface_temperature?.[fallbackIdx];
                 if (fallbackVal !== null && fallbackVal !== undefined) {
                   sstVal = Number(fallbackVal);
                   // eslint-disable-next-line no-console
-                  console.debug("SST fallback used m.hourly value at index", fallbackIdx, sstVal);
+                  console.debug(
+                    "SST fallback used m.hourly value at index",
+                    fallbackIdx,
+                    sstVal
+                  );
                 }
               }
             } catch (e) {
@@ -1474,7 +1510,6 @@ export default function HotspotMap() {
 
   return (
     <div className="space-y-6">
-
       {/* Map Container - Full Width */}
       <Card className="border-border overflow-hidden">
         <CardContent className="p-0 h-[600px] relative">
@@ -1537,11 +1572,15 @@ export default function HotspotMap() {
                           className={`w-8 h-1 ${dashColor} opacity-40`}
                           style={{ borderStyle: "dashed" }}
                         ></div>
-                        <span className={`text-sm font-bold ${
-                          riskColor === 'text-red-700' ? 'text-red-700 dark:text-red-400' :
-                          riskColor === 'text-orange-700' ? 'text-orange-700 dark:text-orange-400' :
-                          'text-yellow-700 dark:text-yellow-400'
-                        }`}>
+                        <span
+                          className={`text-sm font-bold ${
+                            riskColor === "text-red-700"
+                              ? "text-red-700 dark:text-red-400"
+                              : riskColor === "text-orange-700"
+                              ? "text-orange-700 dark:text-orange-400"
+                              : "text-yellow-700 dark:text-yellow-400"
+                          }`}
+                        >
                           Original Route ({riskLabel})
                         </span>
                       </div>
@@ -1617,17 +1656,17 @@ export default function HotspotMap() {
                       </span>
                     </div>
                   </div>
-                  
+
                   <div className="flex flex-col gap-1">
-                     <div className="text-[10px] font-mono text-slate-500 dark:text-slate-400 flex justify-between">
-                        <span>Lat: {userLocation.lat.toFixed(4)}</span>
-                        <span>Lng: {userLocation.lng.toFixed(4)}</span>
-                     </div>
-                     {userLocationMeta?.accuracy && (
-                        <div className="text-[10px] text-slate-400 text-right">
-                          ±{userLocationMeta.accuracy.toFixed(0)}m accuracy
-                        </div>
-                     )}
+                    <div className="text-[10px] font-mono text-slate-500 dark:text-slate-400 flex justify-between">
+                      <span>Lat: {userLocation.lat.toFixed(4)}</span>
+                      <span>Lng: {userLocation.lng.toFixed(4)}</span>
+                    </div>
+                    {userLocationMeta?.accuracy && (
+                      <div className="text-[10px] text-slate-400 text-right">
+                        ±{userLocationMeta.accuracy.toFixed(0)}m accuracy
+                      </div>
+                    )}
                   </div>
 
                   <div className="flex gap-2 mt-1">
@@ -1675,7 +1714,7 @@ export default function HotspotMap() {
                     <Locate className="w-4 h-4" />
                     Use My Location
                   </button>
-                  
+
                   {geolocationError && (
                     <div className="bg-red-50 border border-red-100 rounded p-1.5">
                       <p className="text-[10px] text-red-600 leading-tight">
@@ -1701,25 +1740,25 @@ export default function HotspotMap() {
                   >
                     Or use map center instead
                   </button>
-                  
+
                   {manualDestination && (
-                     <button
-                        className="text-[10px] text-slate-500 hover:text-purple-600 underline decoration-dotted underline-offset-2 text-center transition-colors mt-1"
-                        onClick={() => {
-                          setUserLocation({
-                            lat: manualDestination.lat,
-                            lng: manualDestination.lng,
-                          });
-                          setUserLocationMeta({
-                            source: "manual",
-                            timestamp: Date.now(),
-                            accuracy: null,
-                          });
-                          setGeolocationError(null);
-                        }}
-                      >
-                        Use clicked point
-                      </button>
+                    <button
+                      className="text-[10px] text-slate-500 hover:text-purple-600 underline decoration-dotted underline-offset-2 text-center transition-colors mt-1"
+                      onClick={() => {
+                        setUserLocation({
+                          lat: manualDestination.lat,
+                          lng: manualDestination.lng,
+                        });
+                        setUserLocationMeta({
+                          source: "manual",
+                          timestamp: Date.now(),
+                          accuracy: null,
+                        });
+                        setGeolocationError(null);
+                      }}
+                    >
+                      Use clicked point
+                    </button>
                   )}
                 </>
               )}
@@ -1729,9 +1768,14 @@ export default function HotspotMap() {
           <Map
             key={isDarkMode ? "dark-map" : "light-map"}
             {...viewState}
+            ref={mapRef}
             onMove={(evt) => setViewState(evt.viewState)}
             style={{ width: "100%", height: "100%" }}
-            mapStyle={isDarkMode ? "mapbox://styles/thenushan05/cmieo0ph6005b01qtfshv5owu" : "mapbox://styles/mapbox/outdoors-v12"}
+            mapStyle={
+              isDarkMode
+                ? "mapbox://styles/thenushan05/cmieo0ph6005b01qtfshv5owu"
+                : "mapbox://styles/mapbox/outdoors-v12"
+            }
             mapboxAccessToken={mapboxToken}
             onClick={handleMapClick}
           >
@@ -2286,6 +2330,9 @@ export default function HotspotMap() {
               </Popup>
             )}
           </Map>
+
+          {/* Jaffna controls overlay - passes the mapRef so it can add/update hotspot layer */}
+          <JaffnaHotspotControls mapRef={mapRef} />
         </CardContent>
       </Card>
 
@@ -2386,7 +2433,9 @@ export default function HotspotMap() {
                           </div>
                           <span
                             className={`font-semibold ${
-                              isSelected ? "text-primary" : "text-slate-700 dark:text-slate-200"
+                              isSelected
+                                ? "text-primary"
+                                : "text-slate-700 dark:text-slate-200"
                             }`}
                           >
                             {r.title}
@@ -2419,10 +2468,6 @@ export default function HotspotMap() {
           </Card>
         </div>
       )}
-
-
-
-
 
       {/* Time Analysis Results */}
       {timeAnalysis && timeAnalysis.length > 0 && (
@@ -2632,7 +2677,7 @@ export default function HotspotMap() {
 
       {/* Alternative Routes Results */}
       {alternativeRoutes && alternativeRoutes.length > 1 && (
-        <Card className="border-0 shadow-xl overflow-hidden bg-white/50 backdrop-blur-sm ring-1 ring-slate-900/5">
+        <Card className="border-0 shadow-xl overflow-hidden bg-white/50 dark:bg-slate-900/50 backdrop-blur-sm ring-1 ring-slate-900/5 dark:ring-slate-700/50">
           <div className="bg-gradient-to-r from-violet-600 to-indigo-600 px-6 py-4 text-white flex justify-between items-center">
             <div>
               <h3 className="text-lg font-bold flex items-center gap-2">
@@ -2656,39 +2701,39 @@ export default function HotspotMap() {
               {/* Left Panel: Recommendation & Guide */}
               <div className="lg:col-span-4 space-y-6">
                 <div>
-                  <h4 className="text-xl font-bold text-slate-900 leading-tight mb-2">
+                  <h4 className="text-xl font-bold text-slate-900 dark:text-slate-100 leading-tight mb-2">
                     {alternativeRoutes[0].routeType === "main"
                       ? "Direct Route is Safest"
                       : "Alternative Recommended"}
                   </h4>
-                  <p className="text-slate-500 text-sm leading-relaxed">
+                  <p className="text-slate-500 dark:text-slate-400 text-sm leading-relaxed">
                     {alternativeRoutes[0].routeType === "main"
                       ? "The direct path has the lowest cumulative risk score based on current weather conditions."
                       : `The ${alternativeRoutes[0].routeType}ern route avoids higher risk areas found on the direct path.`}
                   </p>
                 </div>
 
-                <div className="bg-slate-50 rounded-xl p-4 border border-slate-100">
-                  <h5 className="text-xs font-semibold text-slate-900 uppercase tracking-wider mb-3 flex items-center gap-2">
+                <div className="bg-slate-50 dark:bg-slate-800 rounded-xl p-4 border border-slate-100 dark:border-slate-700">
+                  <h5 className="text-xs font-semibold text-slate-900 dark:text-slate-100 uppercase tracking-wider mb-3 flex items-center gap-2">
                     <span className="text-lg">💡</span> How to use
                   </h5>
                   <ul className="space-y-2.5">
-                    <li className="flex gap-2 text-xs text-slate-600">
-                      <span className="bg-violet-100 text-violet-700 rounded-full w-5 h-5 flex items-center justify-center shrink-0 font-bold">
+                    <li className="flex gap-2 text-xs text-slate-600 dark:text-slate-300">
+                      <span className="bg-violet-100 dark:bg-violet-900 text-violet-700 dark:text-violet-300 rounded-full w-5 h-5 flex items-center justify-center shrink-0 font-bold">
                         1
                       </span>
                       <span>
                         Select a route card to visualize it on the map.
                       </span>
                     </li>
-                    <li className="flex gap-2 text-xs text-slate-600">
-                      <span className="bg-violet-100 text-violet-700 rounded-full w-5 h-5 flex items-center justify-center shrink-0 font-bold">
+                    <li className="flex gap-2 text-xs text-slate-600 dark:text-slate-300">
+                      <span className="bg-violet-100 dark:bg-violet-900 text-violet-700 dark:text-violet-300 rounded-full w-5 h-5 flex items-center justify-center shrink-0 font-bold">
                         2
                       </span>
                       <span>Compare risk scores (lower is better).</span>
                     </li>
-                    <li className="flex gap-2 text-xs text-slate-600">
-                      <span className="bg-violet-100 text-violet-700 rounded-full w-5 h-5 flex items-center justify-center shrink-0 font-bold">
+                    <li className="flex gap-2 text-xs text-slate-600 dark:text-slate-300">
+                      <span className="bg-violet-100 dark:bg-violet-900 text-violet-700 dark:text-violet-300 rounded-full w-5 h-5 flex items-center justify-center shrink-0 font-bold">
                         3
                       </span>
                       <span>
@@ -2730,8 +2775,8 @@ export default function HotspotMap() {
                           relative cursor-pointer rounded-xl p-4 border-2 transition-all duration-300 flex flex-col justify-between group
                           ${
                             isSelected
-                              ? "border-violet-600 bg-violet-50/50 shadow-md scale-[1.02]"
-                              : "border-slate-100 bg-white hover:border-violet-200 hover:shadow-sm"
+                              ? "border-violet-600 dark:border-violet-500 bg-violet-50/50 dark:bg-violet-950/50 shadow-md scale-[1.02]"
+                              : "border-slate-100 dark:border-slate-700 bg-white dark:bg-slate-800 hover:border-violet-200 dark:hover:border-violet-700 hover:shadow-sm"
                           }
                         `}
                       >
@@ -2744,17 +2789,19 @@ export default function HotspotMap() {
                         <div className="space-y-1 text-center mb-4">
                           <div
                             className={`text-xs font-semibold uppercase tracking-wider ${
-                              isSelected ? "text-violet-700" : "text-slate-500"
+                              isSelected
+                                ? "text-violet-700 dark:text-violet-300"
+                                : "text-slate-500 dark:text-slate-400"
                             }`}
                           >
                             {route.routeType === "main"
                               ? "Direct"
                               : `${route.routeType}ern`}
                           </div>
-                          <div className="text-3xl font-bold text-slate-900">
+                          <div className="text-3xl font-bold text-slate-900 dark:text-slate-100">
                             {route.hazardScore}
                           </div>
-                          <div className="text-[10px] text-slate-400 font-medium">
+                          <div className="text-[10px] text-slate-400 dark:text-slate-500 font-medium">
                             Risk Score
                           </div>
                         </div>
@@ -2815,10 +2862,10 @@ export default function HotspotMap() {
       {/* Hotspot Details - Grid Below Map */}
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
         {/* Navigation Info */}
-        <Card className="border-0 shadow-xl bg-slate-50/50 backdrop-blur-sm ring-1 ring-slate-900/5">
-          <CardHeader className="pb-2 border-b border-slate-100 bg-white/50">
-            <CardTitle className="text-lg flex items-center gap-2 text-slate-800">
-              <Navigation className="h-5 w-5 text-slate-600" />
+        <Card className="border-0 shadow-xl bg-slate-50/50 dark:bg-slate-900/50 backdrop-blur-sm ring-1 ring-slate-900/5 dark:ring-slate-700/50">
+          <CardHeader className="pb-2 border-b border-slate-100 dark:border-slate-700 bg-white/50 dark:bg-slate-800/50">
+            <CardTitle className="text-lg flex items-center gap-2 text-slate-800 dark:text-slate-100">
+              <Navigation className="h-5 w-5 text-slate-600 dark:text-slate-400" />
               Navigation
             </CardTitle>
           </CardHeader>
@@ -2826,18 +2873,18 @@ export default function HotspotMap() {
             {/* Start / End Points */}
             <div className="space-y-3">
               <div className="flex justify-between items-center">
-                <span className="text-sm font-medium text-slate-500">
+                <span className="text-sm font-medium text-slate-500 dark:text-slate-400">
                   Start Point
                 </span>
                 <Badge
                   variant="outline"
-                  className="bg-white text-slate-700 border-slate-200 font-normal"
+                  className="bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 border-slate-200 dark:border-slate-600 font-normal"
                 >
                   {userLocation ? "Current Location" : "Waiting for GPS..."}
                 </Badge>
               </div>
               <div className="flex justify-between items-center">
-                <span className="text-sm font-medium text-slate-500">
+                <span className="text-sm font-medium text-slate-500 dark:text-slate-400">
                   Destination
                 </span>
                 <Badge
@@ -2859,26 +2906,29 @@ export default function HotspotMap() {
 
             {/* Distance Display */}
             {distanceKm !== null && (
-              <div className="py-4 bg-white rounded-xl border border-slate-100 shadow-sm text-center">
-                <p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold mb-1">
+              <div className="py-4 bg-white dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-700 shadow-sm text-center">
+                <p className="text-[10px] text-slate-400 dark:text-slate-500 uppercase tracking-widest font-bold mb-1">
                   DISTANCE
                 </p>
-                <p className="text-3xl font-black text-sky-600">
-                  {distanceKm!.toFixed(1)} <span className="text-lg text-sky-400">km</span>
+                <p className="text-3xl font-black text-sky-600 dark:text-sky-400">
+                  {distanceKm!.toFixed(1)}{" "}
+                  <span className="text-lg text-sky-400 dark:text-sky-500">
+                    km
+                  </span>
                 </p>
               </div>
             )}
 
             {/* Destination Marine Data */}
-            <div className="bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden">
-              <div className="px-4 py-3 bg-slate-50/50 border-b border-slate-100 flex items-center justify-between">
+            <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-700 shadow-sm overflow-hidden">
+              <div className="px-4 py-3 bg-slate-50/50 dark:bg-slate-700/50 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <Waves className="h-4 w-4 text-sky-600" />
-                  <span className="text-sm font-bold text-slate-700">
+                  <Waves className="h-4 w-4 text-sky-600 dark:text-sky-400" />
+                  <span className="text-sm font-bold text-slate-700 dark:text-slate-200">
                     Destination Marine
                   </span>
                 </div>
-                <span className="text-[10px] text-slate-400">
+                <span className="text-[10px] text-slate-400 dark:text-slate-500">
                   Data from Open-Meteo Marine
                 </span>
               </div>
@@ -2888,10 +2938,10 @@ export default function HotspotMap() {
                 {!destinationMarine && !destinationMarineError && (
                   <div className="flex flex-col items-center justify-center py-4 gap-3">
                     <div className="relative">
-                      <WiCloud className="h-12 w-12 text-slate-200" />
+                      <WiCloud className="h-12 w-12 text-slate-200 dark:text-slate-600" />
                       <WiRaindrops className="h-6 w-6 text-sky-400 absolute bottom-0 right-0 animate-bounce" />
                     </div>
-                    <span className="text-xs text-slate-400 animate-pulse">
+                    <span className="text-xs text-slate-400 dark:text-slate-500 animate-pulse">
                       Loading marine forecasts...
                     </span>
                   </div>
@@ -2915,7 +2965,9 @@ export default function HotspotMap() {
                       </div>
                       <div className="text-lg font-bold text-slate-800">
                         {destinationMarine.hourly?.wave_height?.[0] ?? "N/A"}{" "}
-                        <span className="text-xs font-normal text-slate-400">m</span>
+                        <span className="text-xs font-normal text-slate-400">
+                          m
+                        </span>
                       </div>
                     </div>
 
@@ -2928,7 +2980,8 @@ export default function HotspotMap() {
                         </span>
                       </div>
                       <div className="text-lg font-bold text-slate-800">
-                        {destinationMarine.hourly?.wave_direction?.[0] ?? "N/A"}°
+                        {destinationMarine.hourly?.wave_direction?.[0] ?? "N/A"}
+                        °
                       </div>
                     </div>
 
@@ -2941,9 +2994,11 @@ export default function HotspotMap() {
                         </span>
                       </div>
                       <div className="text-lg font-bold text-slate-800">
-                        {destinationMarine.hourly?.ocean_current_velocity?.[0] ??
-                          "N/A"}{" "}
-                        <span className="text-xs font-normal text-slate-400">m/s</span>
+                        {destinationMarine.hourly
+                          ?.ocean_current_velocity?.[0] ?? "N/A"}{" "}
+                        <span className="text-xs font-normal text-slate-400">
+                          m/s
+                        </span>
                       </div>
                     </div>
 
@@ -2956,8 +3011,9 @@ export default function HotspotMap() {
                         </span>
                       </div>
                       <div className="text-lg font-bold text-slate-800">
-                        {destinationMarine.hourly?.ocean_current_direction?.[0] ??
-                          "N/A"}°
+                        {destinationMarine.hourly
+                          ?.ocean_current_direction?.[0] ?? "N/A"}
+                        °
                       </div>
                     </div>
                   </div>
@@ -2966,15 +3022,15 @@ export default function HotspotMap() {
             </div>
 
             {/* Journey Settings */}
-            <div className="bg-white rounded-xl border border-slate-100 shadow-sm overflow-hidden">
-              <div className="px-4 py-3 bg-slate-50/50 border-b border-slate-100 flex items-center justify-between">
+            <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-700 shadow-sm overflow-hidden">
+              <div className="px-4 py-3 bg-slate-50/50 dark:bg-slate-700/50 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <Navigation className="h-4 w-4 text-slate-800" />
-                  <span className="text-sm font-bold text-slate-700">
+                  <Navigation className="h-4 w-4 text-slate-800 dark:text-slate-200" />
+                  <span className="text-sm font-bold text-slate-700 dark:text-slate-200">
                     Journey Settings
                   </span>
                 </div>
-                <span className="text-[10px] text-slate-400">
+                <span className="text-[10px] text-slate-400 dark:text-slate-500">
                   Adjust trip parameters
                 </span>
               </div>
@@ -2982,16 +3038,19 @@ export default function HotspotMap() {
               <div className="p-4 space-y-4">
                 {/* Boat Speed Input */}
                 <div className="flex items-center justify-between">
-                  <label className="text-sm text-slate-600 font-medium">
-                    Boat Speed <span className="text-slate-400 font-normal">(km/h)</span>
+                  <label className="text-sm text-slate-600 dark:text-slate-300 font-medium">
+                    Boat Speed{" "}
+                    <span className="text-slate-400 font-normal">(km/h)</span>
                   </label>
                   <input
                     type="number"
                     value={boatSpeedKmh}
                     onChange={(e) =>
-                      setBoatSpeedKmh(Math.max(1, parseFloat(e.target.value) || 10))
+                      setBoatSpeedKmh(
+                        Math.max(1, parseFloat(e.target.value) || 10)
+                      )
                     }
-                    className="w-24 px-3 py-1.5 text-sm font-semibold text-right border border-slate-200 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition-all"
+                    className="w-24 px-3 py-1.5 text-sm font-semibold text-right border border-slate-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition-all bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100"
                     min="1"
                     max="50"
                     step="0.5"
@@ -3000,14 +3059,14 @@ export default function HotspotMap() {
 
                 {/* Departure Time Input */}
                 <div className="flex items-center justify-between">
-                  <label className="text-sm text-slate-600 font-medium">
+                  <label className="text-sm text-slate-600 dark:text-slate-300 font-medium">
                     Departure
                   </label>
                   <input
                     type="datetime-local"
                     value={departureTime.toISOString().slice(0, 16)}
                     onChange={(e) => setDepartureTime(new Date(e.target.value))}
-                    className="px-3 py-1.5 text-sm font-medium border border-slate-200 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition-all bg-white"
+                    className="px-3 py-1.5 text-sm font-medium border border-slate-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition-all bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100"
                   />
                 </div>
 
@@ -3019,7 +3078,10 @@ export default function HotspotMap() {
                       <span>Est. Journey Time</span>
                     </div>
                     <span className="font-bold text-slate-800 text-lg">
-                      {(distanceKm / boatSpeedKmh).toFixed(1)} <span className="text-sm font-normal text-slate-500">h</span>
+                      {(distanceKm / boatSpeedKmh).toFixed(1)}{" "}
+                      <span className="text-sm font-normal text-slate-500">
+                        h
+                      </span>
                     </span>
                   </div>
                 )}
@@ -3070,9 +3132,9 @@ export default function HotspotMap() {
           </CardContent>
         </Card>
 
-        <Card className="border-0 shadow-xl bg-slate-50/50 backdrop-blur-sm ring-1 ring-slate-900/5">
-          <CardHeader className="pb-2 border-b border-slate-100 bg-white/50">
-            <CardTitle className="text-lg flex items-center gap-2 text-slate-800">
+        <Card className="border-0 shadow-xl bg-slate-50/50 dark:bg-slate-900/50 backdrop-blur-sm ring-1 ring-slate-900/5 dark:ring-slate-700/50">
+          <CardHeader className="pb-2 border-b border-slate-100 dark:border-slate-700 bg-white/50 dark:bg-slate-800/50">
+            <CardTitle className="text-lg flex items-center gap-2 text-slate-800 dark:text-slate-100">
               <MapPin className="h-5 w-5 text-rose-500" />
               Selected Hotspot
             </CardTitle>
@@ -3082,14 +3144,18 @@ export default function HotspotMap() {
             <div className="space-y-3">
               <div className="flex justify-between items-start">
                 <div>
-                  <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">
+                  <p className="text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                     Location
                   </p>
-                  <p className="text-sm font-bold text-slate-800 mt-0.5">
+                  <p className="text-sm font-bold text-slate-800 dark:text-slate-100 mt-0.5">
                     {manualDestination
-                      ? `${manualDestination.lat.toFixed(3)}°N, ${manualDestination.lng.toFixed(3)}°E`
+                      ? `${manualDestination.lat.toFixed(
+                          3
+                        )}°N, ${manualDestination.lng.toFixed(3)}°E`
                       : selectedHotspot
-                      ? `${selectedHotspot.lat.toFixed(3)}°N, ${selectedHotspot.lng.toFixed(3)}°E`
+                      ? `${selectedHotspot.lat.toFixed(
+                          3
+                        )}°N, ${selectedHotspot.lng.toFixed(3)}°E`
                       : "No selection"}
                   </p>
                   {manualDestination && (
@@ -3099,7 +3165,7 @@ export default function HotspotMap() {
                   )}
                 </div>
                 <div className="text-right">
-                  <p className="text-xs font-medium text-slate-500 uppercase tracking-wider">
+                  <p className="text-xs font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                     Target Species
                   </p>
                   <div className="mt-1">
@@ -3113,12 +3179,16 @@ export default function HotspotMap() {
               {/* Probability Bar */}
               <div>
                 <div className="flex justify-between text-xs mb-1.5">
-                  <span className="font-medium text-slate-500">Catch Probability</span>
-                  <span className="font-bold text-slate-700">
-                    {selectedHotspot ? `${(selectedHotspot.probability * 100).toFixed(0)}%` : "—"}
+                  <span className="font-medium text-slate-500 dark:text-slate-400">
+                    Catch Probability
+                  </span>
+                  <span className="font-bold text-slate-700 dark:text-slate-200">
+                    {selectedHotspot
+                      ? `${(selectedHotspot.probability * 100).toFixed(0)}%`
+                      : "—"}
                   </span>
                 </div>
-                <div className="h-2.5 bg-slate-100 rounded-full overflow-hidden border border-slate-200">
+                <div className="h-2.5 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden border border-slate-200 dark:border-slate-600">
                   {selectedHotspot && (
                     <div
                       className={`h-full rounded-full transition-all duration-500 ${
@@ -3138,26 +3208,33 @@ export default function HotspotMap() {
             {/* Environmental Grid */}
             <div className="grid grid-cols-2 gap-3">
               {/* Depth */}
-              <div className="bg-white p-3 rounded-xl border border-slate-100 shadow-sm">
+              <div className="bg-white dark:bg-slate-800 p-3 rounded-xl border border-slate-100 dark:border-slate-700 shadow-sm">
                 <div className="flex items-center gap-2 mb-1">
                   <Waves className="h-4 w-4 text-blue-500" />
-                  <span className="text-xs font-medium text-slate-500">Depth</span>
+                  <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                    Depth
+                  </span>
                 </div>
-                <p className="text-lg font-bold text-slate-800">
-                  {selectedHotspot ? selectedHotspot.depth : "—"} <span className="text-xs font-normal text-slate-400">m</span>
+                <p className="text-lg font-bold text-slate-800 dark:text-slate-100">
+                  {selectedHotspot ? selectedHotspot.depth : "—"}{" "}
+                  <span className="text-xs font-normal text-slate-400">m</span>
                 </p>
               </div>
 
               {/* SST */}
-              <div className="bg-white p-3 rounded-xl border border-slate-100 shadow-sm">
+              <div className="bg-white dark:bg-slate-800 p-3 rounded-xl border border-slate-100 dark:border-slate-700 shadow-sm">
                 <div className="flex items-center gap-2 mb-1">
                   <Thermometer className="h-4 w-4 text-rose-500" />
-                  <span className="text-xs font-medium text-slate-500">SST</span>
+                  <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                    SST
+                  </span>
                 </div>
                 <div className="flex items-baseline gap-1">
-                  <p className="text-lg font-bold text-slate-800">
+                  <p className="text-lg font-bold text-slate-800 dark:text-slate-100">
                     {destinationSSTLoading ? (
-                      <span className="text-xs text-slate-400 animate-pulse">Loading...</span>
+                      <span className="text-xs text-slate-400 animate-pulse">
+                        Loading...
+                      </span>
                     ) : destinationSST !== null ? (
                       destinationSST.toFixed(1)
                     ) : selectedHotspot?.sst ? (
@@ -3171,38 +3248,53 @@ export default function HotspotMap() {
               </div>
 
               {/* Chlorophyll */}
-              <div className="bg-white p-3 rounded-xl border border-slate-100 shadow-sm">
+              <div className="bg-white dark:bg-slate-800 p-3 rounded-xl border border-slate-100 dark:border-slate-700 shadow-sm">
                 <div className="flex items-center gap-2 mb-1">
                   <Droplets className="h-4 w-4 text-emerald-500" />
-                  <span className="text-xs font-medium text-slate-500">Chlorophyll</span>
+                  <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                    Chlorophyll
+                  </span>
                 </div>
-                <p className="text-lg font-bold text-slate-800">
-                  {selectedHotspot ? selectedHotspot.chl : "—"} <span className="text-xs font-normal text-slate-400">mg/m³</span>
+                <p className="text-lg font-bold text-slate-800 dark:text-slate-100">
+                  {selectedHotspot ? selectedHotspot.chl : "—"}{" "}
+                  <span className="text-xs font-normal text-slate-400">
+                    mg/m³
+                  </span>
                 </p>
               </div>
 
               {/* Wind (from local weather) */}
-              <div className="bg-white p-3 rounded-xl border border-slate-100 shadow-sm">
+              <div className="bg-white dark:bg-slate-800 p-3 rounded-xl border border-slate-100 dark:border-slate-700 shadow-sm">
                 <div className="flex items-center gap-2 mb-1">
                   <Wind className="h-4 w-4 text-sky-500" />
-                  <span className="text-xs font-medium text-slate-500">Wind</span>
+                  <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                    Wind
+                  </span>
                 </div>
-                <p className="text-lg font-bold text-slate-800">
-                  {localWeather?.current?.windspeed ?? "—"} <span className="text-xs font-normal text-slate-400">km/h</span>
+                <p className="text-lg font-bold text-slate-800 dark:text-slate-100">
+                  {localWeather?.current?.windspeed ?? "—"}{" "}
+                  <span className="text-xs font-normal text-slate-400">
+                    km/h
+                  </span>
                 </p>
               </div>
             </div>
 
             {/* Local Weather Widget */}
-            <div className="bg-gradient-to-br from-sky-50 to-indigo-50/50 rounded-xl border border-sky-100 p-4">
+            <div className="bg-gradient-to-br from-sky-50 to-indigo-50/50 dark:from-sky-950 dark:to-indigo-950/50 rounded-xl border border-sky-100 dark:border-sky-800 p-4">
               <div className="flex items-center justify-between mb-3">
                 <div className="flex items-center gap-2">
-                  <CloudLightning className="h-4 w-4 text-sky-600" />
-                  <span className="text-sm font-bold text-sky-900">Local Weather</span>
+                  <CloudLightning className="h-4 w-4 text-sky-600 dark:text-sky-400" />
+                  <span className="text-sm font-bold text-sky-900 dark:text-sky-100">
+                    Local Weather
+                  </span>
                 </div>
                 {localWeather?.current?.time && (
-                  <span className="text-[10px] font-medium text-sky-700 bg-sky-100 px-2 py-0.5 rounded-full">
-                    {new Date(localWeather.current.time).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}
+                  <span className="text-[10px] font-medium text-sky-700 dark:text-sky-300 bg-sky-100 dark:bg-sky-900 px-2 py-0.5 rounded-full">
+                    {new Date(localWeather.current.time).toLocaleTimeString(
+                      [],
+                      { hour: "2-digit", minute: "2-digit" }
+                    )}
                   </span>
                 )}
               </div>
@@ -3219,26 +3311,30 @@ export default function HotspotMap() {
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3">
-                      <div className="bg-white p-2 rounded-full shadow-sm">
+                      <div className="bg-white dark:bg-slate-800 p-2 rounded-full shadow-sm">
                         <WiDaySunny className="h-8 w-8 text-amber-500" />
                       </div>
                       <div>
-                        <p className="text-2xl font-black text-slate-800">
+                        <p className="text-2xl font-black text-slate-800 dark:text-slate-100">
                           {localWeather.current?.temperature ?? "—"}°
                         </p>
-                        <p className="text-xs text-slate-500 font-medium">
+                        <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
                           Current Temp
                         </p>
                       </div>
                     </div>
                     <div className="text-right space-y-1">
-                      <div className="flex items-center justify-end gap-1.5 text-xs text-slate-600">
+                      <div className="flex items-center justify-end gap-1.5 text-xs text-slate-600 dark:text-slate-300">
                         <Navigation className="h-3 w-3 rotate-45" />
-                        <span>{localWeather.current?.winddirection ?? "—"}°</span>
+                        <span>
+                          {localWeather.current?.winddirection ?? "—"}°
+                        </span>
                       </div>
-                      <div className="flex items-center justify-end gap-1.5 text-xs text-slate-600">
+                      <div className="flex items-center justify-end gap-1.5 text-xs text-slate-600 dark:text-slate-300">
                         <WiRaindrops className="h-3 w-3 text-blue-500" />
-                        <span>{localWeather.hourly?.precipitation?.[0] ?? "0"} mm</span>
+                        <span>
+                          {localWeather.hourly?.precipitation?.[0] ?? "0"} mm
+                        </span>
                       </div>
                     </div>
                   </div>
@@ -3251,7 +3347,10 @@ export default function HotspotMap() {
                       </p>
                       <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-hide">
                         {localWeather.hourly.time.slice(0, 6).map((t, i) => (
-                          <div key={t} className="flex-shrink-0 bg-white/60 p-2 rounded-lg min-w-[60px] text-center border border-white/50">
+                          <div
+                            key={t}
+                            className="flex-shrink-0 bg-white/60 p-2 rounded-lg min-w-[60px] text-center border border-white/50"
+                          >
                             <p className="text-[10px] font-bold text-slate-600">
                               {new Date(t).getHours()}:00
                             </p>
@@ -3259,14 +3358,18 @@ export default function HotspotMap() {
                               {/* Simple icon logic */}
                               {localWeather.hourly.precipitation?.[i]! > 0.5 ? (
                                 <WiRaindrops className="h-5 w-5 text-blue-500" />
-                              ) : localWeather.hourly.wind_speed_180m?.[i]! > 20 ? (
+                              ) : localWeather.hourly.wind_speed_180m?.[i]! >
+                                20 ? (
                                 <WiStrongWind className="h-5 w-5 text-slate-500" />
                               ) : (
                                 <WiDaySunny className="h-5 w-5 text-amber-500" />
                               )}
                             </div>
                             <p className="text-[10px] font-medium text-slate-800">
-                              {localWeather.hourly.wind_speed_180m?.[i]?.toFixed(0)} kph
+                              {localWeather.hourly.wind_speed_180m?.[
+                                i
+                              ]?.toFixed(0)}{" "}
+                              kph
                             </p>
                           </div>
                         ))}
