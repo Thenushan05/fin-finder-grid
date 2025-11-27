@@ -10,18 +10,18 @@ export function showError(message: string) {
     position: "top-right",
     // Custom styling for a premium look
     className: `
-      !bg-red-950/90 !backdrop-blur-md 
-      !border !border-red-500/30 
-      !text-red-50 !font-medium !shadow-xl !shadow-red-900/20
+      !bg-red-600/80 !backdrop-blur-md 
+      !border !border-red-400/50 
+      !text-white !font-medium !shadow-lg !shadow-red-900/20
       !rounded-xl
     `,
     // Add a custom icon or style overrides if needed
     duration: 5000,
     style: {
       // Ensure specific overrides if Tailwind classes fight with Sonner defaults
-      background: "linear-gradient(to bottom right, rgba(69, 10, 10, 0.95), rgba(127, 29, 29, 0.9))",
-      border: "1px solid rgba(248, 113, 113, 0.2)",
-      color: "#fef2f2",
+      background: "transparent", // Allow Tailwind classes to show
+      border: "1px solid rgba(248, 113, 113, 0.5)",
+      color: "#ffffff",
     },
   });
 }
