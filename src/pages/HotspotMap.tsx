@@ -25,6 +25,7 @@ import {
   Crosshair,
   Move,
   Locate,
+  Flag,
 } from "lucide-react";
 import { WiDaySunny, WiCloud, WiStrongWind, WiRaindrops } from "react-icons/wi";
 import {
@@ -205,6 +206,13 @@ export default function HotspotMap() {
   const [destinationMarineError, setDestinationMarineError] = useState<
     string | null
   >(null);
+
+  const [isMapLoaded, setIsMapLoaded] = useState(false);
+
+  // Reset map loaded state when theme changes (forcing map remount)
+  useEffect(() => {
+    setIsMapLoaded(false);
+  }, [isDarkMode]);
 
   const mapboxToken = import.meta.env.VITE_MAPBOX_TOKEN;
 
@@ -1765,11 +1773,14 @@ export default function HotspotMap() {
             </div>
           </div>
 
+
+
           <Map
             key={isDarkMode ? "dark-map" : "light-map"}
             {...viewState}
             ref={mapRef}
             onMove={(evt) => setViewState(evt.viewState)}
+            onLoad={() => setIsMapLoaded(true)}
             style={{ width: "100%", height: "100%" }}
             mapStyle={
               isDarkMode
@@ -1922,23 +1933,10 @@ export default function HotspotMap() {
               </Popup>
             )}
 
-            {manualDestination && (
-              <Marker
-                longitude={manualDestination.lng}
-                latitude={manualDestination.lat}
-                anchor="bottom"
-              >
-                <div title="Custom Destination">
-                  <MapPin
-                    className="h-8 w-8 text-destructive drop-shadow-md"
-                    fill="currentColor"
-                  />
-                </div>
-              </Marker>
-            )}
+
 
             {/* Original route outline (dashed red when alternative is selected) */}
-            {originalRouteOutline && (
+            {isMapLoaded && originalRouteOutline && (
               <Source
                 id="route-original-outline"
                 type="geojson"
@@ -1949,7 +1947,7 @@ export default function HotspotMap() {
             )}
 
             {/* Hazard-colored Route Segments */}
-            {routeSegments.length > 0 && (
+            {isMapLoaded && routeSegments.length > 0 && (
               <Source
                 id="route-segments"
                 type="geojson"
@@ -1974,7 +1972,7 @@ export default function HotspotMap() {
             )}
 
             {/* Fallback Route Line (before weather scan) */}
-            {routeGeoJSON && (
+            {isMapLoaded && routeGeoJSON && (
               <Source
                 id="route-default"
                 type="geojson"
@@ -2039,33 +2037,44 @@ export default function HotspotMap() {
                   }}
                 >
                   <div className="relative flex items-center justify-center cursor-pointer group transition-transform hover:scale-110">
+                    {/* Modern Glassmorphism Marker with Icon */}
                     <div
                       title={title}
-                      className={`rounded-full border-2 border-white shadow-md flex items-center justify-center ${
-                        hazard.bgColor
-                      } ${showWarning ? "w-10 h-10 animate-pulse" : "w-8 h-8"}`}
+                      className={`
+                        flex items-center justify-center backdrop-blur-md shadow-sm border border-white/40
+                        transition-all duration-300
+                        ${
+                          hazard.level === "DANGER"
+                            ? "bg-red-500/90 shadow-red-500/20"
+                            : hazard.level === "HIGH"
+                            ? "bg-orange-500/90 shadow-orange-500/20"
+                            : hazard.level === "MEDIUM"
+                            ? "bg-yellow-500/90 shadow-yellow-500/20"
+                            : "bg-emerald-500/90 shadow-emerald-500/20"
+                        }
+                        ${showWarning ? "w-6 h-6 ring-2 ring-red-500/30" : "w-5 h-5"}
+                        rounded-lg
+                      `}
                     >
-                      {/* Render Icon based on primary reason */}
+                      {/* Icon is always visible now, but small and neat */}
                       {primaryReason === "wind" ? (
-                        <Wind className="h-5 w-5 text-white" />
+                        <Wind className="h-3 w-3 text-white" />
                       ) : primaryReason === "waves" ? (
-                        <Waves className="h-5 w-5 text-white" />
+                        <Waves className="h-3 w-3 text-white" />
                       ) : primaryReason === "current" ? (
-                        <Droplets className="h-5 w-5 text-white" />
+                        <Droplets className="h-3 w-3 text-white" />
                       ) : primaryReason === "weather" ? (
-                        <CloudLightning className="h-5 w-5 text-white" />
+                        <CloudLightning className="h-3 w-3 text-white" />
                       ) : isDanger ? (
-                        <AlertTriangle className="h-5 w-5 text-white" />
+                        <AlertTriangle className="h-3 w-3 text-white" />
                       ) : (
-                        <div className="w-2 h-2 bg-white rounded-full opacity-50" />
+                        <div className="w-1.5 h-1.5 bg-white rounded-full opacity-90" />
                       )}
                     </div>
 
-                    {/* Additional Warning Badge for High/Danger if not already clear */}
+                    {/* Subtle indicator for high risk */}
                     {isDanger && !primaryReason && (
-                      <div className="absolute -top-2 -right-2 bg-white rounded-full p-0.5 shadow-sm">
-                        <AlertTriangle className="h-4 w-4 text-red-600 fill-red-100" />
-                      </div>
+                      <div className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full border border-white" />
                     )}
                   </div>
                 </Marker>
@@ -2093,6 +2102,35 @@ export default function HotspotMap() {
                   </div>
                 </Marker>
               )}
+
+            {manualDestination && (
+              <Marker
+                longitude={manualDestination.lng}
+                latitude={manualDestination.lat}
+                anchor="bottom"
+                offset={[0, -10]} // Lift it up slightly to sit "on top" of any hazard icon
+                style={{ zIndex: 9999 }}
+              >
+                <div className="relative group cursor-pointer" title="Destination">
+                  {/* Sleek Professional Pin - Purple & Larger */}
+                  <div className="relative z-10 flex flex-col items-center">
+                    <div className="w-6 h-6 bg-purple-600 rounded-full shadow-2xl border-[3px] border-white transform transition-transform group-hover:scale-110 flex items-center justify-center">
+                      <div className="w-2 h-2 bg-white rounded-full" />
+                    </div>
+                    <div className="w-1 h-4 bg-purple-600/90 rounded-b-full" />
+                  </div>
+                  {/* Shadow base */}
+                  <div className="absolute top-[95%] left-1/2 -translate-x-1/2 w-5 h-2 bg-black/40 rounded-full blur-[2px]" />
+                  
+                  {/* Label */}
+                  <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-50">
+                    <span className="bg-purple-900/95 text-white text-xs font-bold px-2.5 py-1.5 rounded-lg shadow-xl backdrop-blur-md border border-purple-500/30">
+                      Destination
+                    </span>
+                  </div>
+                </div>
+              </Marker>
+            )}
 
             {/* Route Point Hazard Popup */}
             {selectedRoutePoint && (
@@ -2956,61 +2994,61 @@ export default function HotspotMap() {
                 {destinationMarine && (
                   <div className="grid grid-cols-2 gap-3">
                     {/* Wave Height */}
-                    <div className="bg-slate-50 p-3 rounded-lg border border-slate-100">
+                    <div className="bg-slate-50 dark:bg-slate-900/50 p-3 rounded-lg border border-slate-100 dark:border-slate-700">
                       <div className="flex items-center gap-2 mb-1">
                         <Waves className="h-4 w-4 text-blue-500" />
-                        <span className="text-xs text-slate-500 font-medium">
+                        <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">
                           Wave Height
                         </span>
                       </div>
-                      <div className="text-lg font-bold text-slate-800">
+                      <div className="text-lg font-bold text-slate-800 dark:text-slate-100">
                         {destinationMarine.hourly?.wave_height?.[0] ?? "N/A"}{" "}
-                        <span className="text-xs font-normal text-slate-400">
+                        <span className="text-xs font-normal text-slate-400 dark:text-slate-500">
                           m
                         </span>
                       </div>
                     </div>
 
                     {/* Wave Direction */}
-                    <div className="bg-slate-50 p-3 rounded-lg border border-slate-100">
+                    <div className="bg-slate-50 dark:bg-slate-900/50 p-3 rounded-lg border border-slate-100 dark:border-slate-700">
                       <div className="flex items-center gap-2 mb-1">
-                        <Navigation className="h-4 w-4 text-slate-500" />
-                        <span className="text-xs text-slate-500 font-medium">
+                        <Navigation className="h-4 w-4 text-slate-500 dark:text-slate-400" />
+                        <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">
                           Wave Dir
                         </span>
                       </div>
-                      <div className="text-lg font-bold text-slate-800">
+                      <div className="text-lg font-bold text-slate-800 dark:text-slate-100">
                         {destinationMarine.hourly?.wave_direction?.[0] ?? "N/A"}
                         °
                       </div>
                     </div>
 
                     {/* Ocean Current */}
-                    <div className="bg-slate-50 p-3 rounded-lg border border-slate-100">
+                    <div className="bg-slate-50 dark:bg-slate-900/50 p-3 rounded-lg border border-slate-100 dark:border-slate-700">
                       <div className="flex items-center gap-2 mb-1">
                         <Wind className="h-4 w-4 text-sky-500" />
-                        <span className="text-xs text-slate-500 font-medium">
+                        <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">
                           Ocean Current
                         </span>
                       </div>
-                      <div className="text-lg font-bold text-slate-800">
+                      <div className="text-lg font-bold text-slate-800 dark:text-slate-100">
                         {destinationMarine.hourly
                           ?.ocean_current_velocity?.[0] ?? "N/A"}{" "}
-                        <span className="text-xs font-normal text-slate-400">
+                        <span className="text-xs font-normal text-slate-400 dark:text-slate-500">
                           m/s
                         </span>
                       </div>
                     </div>
 
                     {/* Current Direction */}
-                    <div className="bg-slate-50 p-3 rounded-lg border border-slate-100">
+                    <div className="bg-slate-50 dark:bg-slate-900/50 p-3 rounded-lg border border-slate-100 dark:border-slate-700">
                       <div className="flex items-center gap-2 mb-1">
-                        <Navigation className="h-4 w-4 text-slate-500 rotate-90" />
-                        <span className="text-xs text-slate-500 font-medium">
+                        <Navigation className="h-4 w-4 text-slate-500 dark:text-slate-400 rotate-90" />
+                        <span className="text-xs text-slate-500 dark:text-slate-400 font-medium">
                           Current Dir
                         </span>
                       </div>
-                      <div className="text-lg font-bold text-slate-800">
+                      <div className="text-lg font-bold text-slate-800 dark:text-slate-100">
                         {destinationMarine.hourly
                           ?.ocean_current_direction?.[0] ?? "N/A"}
                         °

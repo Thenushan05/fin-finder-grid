@@ -9,7 +9,28 @@ const api = axios.create({
 });
 
 export async function postRegionPrediction(body: any) {
-  const res = await api.post("/api/hotspots/region", body);
+  // Ensure a date is present (backend will accept null, but many pipelines
+  // expect date-derived features). If caller didn't provide a date, set
+  // it to today's YYYYMMDD so YEAR/MONTH can be derived server-side.
+  const payload = { ...body };
+  if (payload.date === null || payload.date === undefined) {
+    const now = new Date();
+    const yyyy = now.getUTCFullYear().toString();
+    const mm = String(now.getUTCMonth() + 1).padStart(2, "0");
+    const dd = String(now.getUTCDate()).padStart(2, "0");
+    payload.date = `${yyyy}${mm}${dd}`;
+  }
+
+  // Map common frontend weather key to backend expected names
+  if (
+    payload.overrides &&
+    payload.overrides.sea_level_height_msl !== undefined
+  ) {
+    // copy to `ssh` which the backend expects
+    payload.overrides.ssh = Number(payload.overrides.sea_level_height_msl);
+  }
+
+  const res = await api.post("/api/hotspots/region", payload);
   return res.data;
 }
 

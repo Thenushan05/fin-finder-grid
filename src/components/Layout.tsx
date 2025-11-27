@@ -2,7 +2,7 @@ import { ReactNode } from "react";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
 import { ThemeToggle } from "@/components/ThemeToggle";
-import { Waves, Fish } from "lucide-react";
+import { Waves, Fish, Map } from "lucide-react";
 import { useLocation } from "react-router-dom";
 
 export function Layout({ children }: { children: ReactNode }) {
@@ -19,7 +19,7 @@ export function Layout({ children }: { children: ReactNode }) {
             <SidebarTrigger className="text-foreground" />
             <div className="flex items-center gap-2 flex-1">
               {isHotspotMap ? (
-                <Waves className="h-6 w-6 text-primary" />
+                <Map className="h-6 w-6 text-primary" />
               ) : isSpecies ? (
                 <Fish className="h-6 w-6 text-primary" />
               ) : (

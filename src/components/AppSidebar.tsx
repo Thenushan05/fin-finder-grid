@@ -1,8 +1,9 @@
-import { Map, Fish, Wrench, TrendingUp, Ship, Home } from "lucide-react";
+import { Map, Fish, Wrench, TrendingUp, Ship, Home, LogOut } from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import {
   Sidebar,
   SidebarContent,
+  SidebarFooter,
   SidebarGroup,
   SidebarGroupContent,
   SidebarGroupLabel,
@@ -54,6 +55,21 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
+      <SidebarFooter>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton asChild>
+              <NavLink
+                to="/login"
+                className="hover:bg-sidebar-accent text-red-500 hover:text-red-600"
+              >
+                <LogOut className="h-4 w-4" />
+                {!collapsed && <span>Log Out</span>}
+              </NavLink>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
+      </SidebarFooter>
     </Sidebar>
   );
 }
