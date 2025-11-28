@@ -25,3 +25,27 @@ export function showError(message: string) {
     },
   });
 }
+
+/**
+ * Show a success toast with a modern, premium design.
+ * Uses a glassmorphism effect with a rich green gradient border/background.
+ * @param message The success message to display.
+ */
+export function showSuccess(message: string) {
+  toast.success(message, {
+    position: "top-right",
+    // Custom styling for a premium look
+    className: `
+      !bg-emerald-600/80 !backdrop-blur-md 
+      !border !border-emerald-400/50 
+      !text-white !font-medium !shadow-lg !shadow-emerald-900/20
+      !rounded-xl
+    `,
+    duration: 5000,
+    style: {
+      background: "transparent",
+      border: "1px solid rgba(52, 211, 153, 0.5)",
+      color: "#ffffff",
+    },
+  });
+}

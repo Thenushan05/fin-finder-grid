@@ -43,6 +43,13 @@ export async function postRegionPrediction(body: any) {
     payload.overrides.ssh = Number(payload.overrides.sea_level_height_msl);
   }
 
+  // Check if request has bbox - use predict-region endpoint
+  if (payload && payload.bbox) {
+    // Region-based prediction with bbox
+    const res = await api.post("/api/v1/hotspots/predict-region", payload);
+    return res.data;
+  }
+  
   // The backend expects an array of GridCell objects at `/api/v1/hotspots/predict`.
   // Accept either an array input or a single-object input and convert to array.
   let sendBody: any = payload;

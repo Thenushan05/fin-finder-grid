@@ -12,7 +12,7 @@ import { ThemeToggle } from "@/components/ThemeToggle";
 import { cn } from "@/lib/utils";
 import logo from "@/assets/images/logo.svg";
 import logodark from "@/assets/images/logodark.svg";
-import { showError } from "@/services/notificationService";
+import { showError, showSuccess } from "@/services/notificationService";
 
 export default function AuthPage() {
   const location = useLocation();
@@ -67,6 +67,7 @@ export default function AuthPage() {
       await dispatch(
         login({ email: loginEmail, password: loginPassword })
       ).unwrap();
+      showSuccess("Login successful! Welcome back.");
       navigate("/home");
     } catch (err: any) {
       console.error("Login error", err);
@@ -113,6 +114,7 @@ export default function AuthPage() {
           password: signupPassword,
         })
       ).unwrap();
+      showSuccess("Account created successfully! Welcome aboard.");
       navigate("/home");
     } catch (err: any) {
       console.error("Signup error", err);

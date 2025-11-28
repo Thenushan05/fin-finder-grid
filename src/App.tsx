@@ -14,6 +14,7 @@ import Market from "./pages/Market";
 import TripPlanner from "./pages/TripPlanner";
 import NotFound from "./pages/NotFound";
 import AuthPage from "./pages/AuthPage";
+import ProfilePage from "./pages/ProfilePage";
 import { MapProvider } from "@/context/MapContext";
 
 const queryClient = new QueryClient();
@@ -39,6 +40,7 @@ const App = () => (
             <Route path="/gear" element={<Layout><Gear /></Layout>} />
             <Route path="/market" element={<Layout><Market /></Layout>} />
             <Route path="/trip-planner" element={<Layout><TripPlanner /></Layout>} />
+            <Route path="/profile" element={<Layout><ProfilePage /></Layout>} />
 
             <Route path="*" element={<NotFound />} />
           </Routes>
