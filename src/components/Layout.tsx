@@ -2,7 +2,7 @@ import { ReactNode } from "react";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
 import { ThemeToggle } from "@/components/ThemeToggle";
-import { Waves, Fish, Map, User, LayoutDashboard } from "lucide-react";
+import { Waves, Fish, Map, User, LayoutDashboard, Wrench } from "lucide-react";
 import { useLocation, useNavigate, Link } from "react-router-dom";
 import { useSelector, useDispatch } from "react-redux";
 import { RootState } from "@/store";
@@ -17,6 +17,7 @@ export function Layout({ children }: { children: ReactNode }) {
   const isHotspotMap = location.pathname === "/hotspot-map";
   const isSpecies = location.pathname === "/species";
   const isDashboard = location.pathname === "/dashboard";
+  const isMaintenance = location.pathname === "/maintenance";
 
   return (
     <SidebarProvider>
@@ -32,12 +33,14 @@ export function Layout({ children }: { children: ReactNode }) {
                 <Fish className="h-6 w-6 text-primary" />
               ) : isDashboard ? (
                 <LayoutDashboard className="h-6 w-6 text-primary" />
+              ) : isMaintenance ? (
+                <Wrench className="h-6 w-6 text-violet-600 dark:text-violet-400" />
               ) : (
                 <Waves className="h-6 w-6 text-primary" />
               )}
               <div>
                 <h1 className="text-xl font-semibold text-foreground">
-                  {isHotspotMap ? "Fish Hotspot Map" : isSpecies ? "Species & Spawning Intelligence" : isDashboard ? "Dashboard Overview" : "Fish Spot Intelligence"}
+                  {isHotspotMap ? "Fish Hotspot Map" : isSpecies ? "Species & Spawning Intelligence" : isDashboard ? "Dashboard Overview" : isMaintenance ? "Vessel Maintenance" : "Fish Spot Intelligence"}
                 </h1>
                 {isHotspotMap && (
                   <p className="text-xs text-muted-foreground hidden sm:block">
@@ -52,6 +55,11 @@ export function Layout({ children }: { children: ReactNode }) {
                 {isDashboard && (
                   <p className="text-xs text-muted-foreground hidden sm:block">
                     Welcome to your fisheries intelligence center
+                  </p>
+                )}
+                {isMaintenance && (
+                  <p className="text-xs text-muted-foreground hidden sm:block">
+                    Manage vessels, track maintenance, and monitor status
                   </p>
                 )}
               </div>
