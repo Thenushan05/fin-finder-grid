@@ -1,5 +1,6 @@
 import { createSlice, createAsyncThunk, PayloadAction } from "@reduxjs/toolkit";
 import axios from "axios";
+import tokenService from "@/services/tokenService";
 
 const BASE = (import.meta as any).env?.VITE_API_BASE || "http://localhost:8000";
 
@@ -12,7 +13,7 @@ const api = axios.create({
 // Attach token from localStorage
 api.interceptors.request.use((cfg) => {
   try {
-    const token = localStorage.getItem("access_token");
+    const token = tokenService.getToken();
     if (token && cfg.headers) cfg.headers["Authorization"] = `Bearer ${token}`;
   } catch (e) {
     // ignore

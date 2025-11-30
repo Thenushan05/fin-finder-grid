@@ -1,4 +1,5 @@
 import axios from "axios";
+import tokenService from "./tokenService";
 
 // Base URL: use Vite env if provided, otherwise default to localhost:8000
 const BASE = (import.meta as any).env?.VITE_API_BASE || "http://localhost:8000";
@@ -13,7 +14,7 @@ api.defaults.withCredentials = true;
 // Attach Authorization header from localStorage if present (dev fallback)
 api.interceptors.request.use((cfg) => {
   try {
-    const token = localStorage.getItem("access_token");
+    const token = tokenService.getToken();
     if (token && cfg.headers) cfg.headers["Authorization"] = `Bearer ${token}`;
   } catch (e) {
     // ignore in SSR/other environments

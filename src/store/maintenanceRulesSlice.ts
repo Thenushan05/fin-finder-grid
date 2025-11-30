@@ -1,5 +1,6 @@
 import { createSlice, createAsyncThunk, PayloadAction } from "@reduxjs/toolkit";
 import axios from "axios";
+import tokenService from "@/services/tokenService";
 
 const BASE = (import.meta as any).env?.VITE_API_BASE || "http://localhost:8000";
 
@@ -12,7 +13,7 @@ const api = axios.create({
 // Attach token from localStorage
 api.interceptors.request.use((cfg) => {
   try {
-    const token = localStorage.getItem("access_token");
+    const token = tokenService.getToken();
     if (token && cfg.headers) cfg.headers["Authorization"] = `Bearer ${token}`;
   } catch (e) {
     // ignore
@@ -111,7 +112,7 @@ const initialState: MaintenanceRulesState = {
 
 export const fetchRules = createAsyncThunk(
   "maintenanceRules/fetchRules",
-  async (systemId?: string, { rejectWithValue }) => {
+  async (systemId: string | undefined, { rejectWithValue }) => {
     try {
       const params = systemId ? { system_id: systemId } : {};
       const response = await api.get("/api/v1/maintenance-rules/rules", {
@@ -240,9 +241,16 @@ export const completeTrip = createAsyncThunk(
       );
       return { vesselId, state: response.data.state };
     } catch (error: any) {
-      return rejectWithValue(
-        error.response?.data?.error || "Failed to complete trip"
+      console.error(
+        "completeTrip error:",
+        error?.response?.data || error?.message || error
       );
+      const payload =
+        error.response?.data || error.message || "Failed to complete trip";
+      // If backend sent a 'detail' or full object, stringify for UI display
+      const msg =
+        typeof payload === "string" ? payload : JSON.stringify(payload);
+      return rejectWithValue(msg);
     }
   }
 );

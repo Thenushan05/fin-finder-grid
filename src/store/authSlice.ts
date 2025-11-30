@@ -16,9 +16,14 @@ export const login = createAsyncThunk(
   ) => {
     try {
       const data = await authLogin(email, password);
-      // If backend returns access_token, store it (dev fallback)
-      if (data && data.access_token)
-        localStorage.setItem("access_token", data.access_token);
+      // If backend returns access_token, store it using tokenService
+      try {
+        const tokenModule = await import("@/services/tokenService");
+        if (data && data.access_token) tokenModule.setToken(data.access_token);
+      } catch (e) {
+        if (data && data.access_token)
+          localStorage.setItem("access_token", data.access_token);
+      }
       // Fetch /me to populate user profile
       try {
         const me = await authMe();
@@ -50,8 +55,13 @@ export const register = createAsyncThunk(
   ) => {
     try {
       const data = await authRegister(name || null, email, password);
-      if (data && data.access_token)
-        localStorage.setItem("access_token", data.access_token);
+      try {
+        const tokenModule = await import("@/services/tokenService");
+        if (data && data.access_token) tokenModule.setToken(data.access_token);
+      } catch (e) {
+        if (data && data.access_token)
+          localStorage.setItem("access_token", data.access_token);
+      }
       try {
         const me = await authMe();
         return me;
@@ -74,7 +84,8 @@ export const checkAuth = createAsyncThunk(
   "auth/checkAuth",
   async (_, thunkAPI) => {
     try {
-      const token = localStorage.getItem("access_token");
+      const tokenModule = await import("@/services/tokenService");
+      const token = tokenModule.getToken();
       console.log("checkAuth - token exists:", !!token);
       if (!token) {
         return null;
