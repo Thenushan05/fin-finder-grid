@@ -1628,7 +1628,7 @@ export default function HotspotMap() {
 
               if (allRoutesHighRisk) {
                 return (
-                  <div className="absolute top-24 left-4 z-10 bg-red-600 text-white rounded-xl shadow-xl border-2 border-red-800 p-4 max-w-sm">
+                  <div className="absolute bottom-12 left-4 z-10 bg-red-600 text-white rounded-xl shadow-xl border-2 border-red-800 p-4 max-w-sm">
                     <div className="flex items-start gap-3">
                       <span className="text-2xl">⛔</span>
                       <div>
@@ -1649,7 +1649,7 @@ export default function HotspotMap() {
             })()}
 
           {/* Geolocation overlay (retry / status) */}
-          <div className="absolute top-4 left-4 z-20">
+          <div className="absolute top-4 right-14 z-20">
             <div className="glass-card p-3 rounded-xl shadow-lg border border-white/40 dark:border-slate-700 backdrop-blur-md bg-white/95 dark:bg-slate-900/95 flex flex-col gap-2 min-w-[200px]">
               {userLocation ? (
                 <>

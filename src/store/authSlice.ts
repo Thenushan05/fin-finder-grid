@@ -70,6 +70,30 @@ export const register = createAsyncThunk(
   }
 );
 
+export const checkAuth = createAsyncThunk(
+  "auth/checkAuth",
+  async (_, thunkAPI) => {
+    try {
+      const token = localStorage.getItem("access_token");
+      console.log("checkAuth - token exists:", !!token);
+      if (!token) {
+        return null;
+      }
+      const me = await authMe();
+      console.log("checkAuth - /me response:", me);
+      return me;
+    } catch (error: any) {
+      console.error("checkAuth - error:", error);
+      console.error("checkAuth - error response:", error?.response?.data);
+      // Don't remove token on network errors, only on auth errors
+      if (error?.response?.status === 401 || error?.response?.status === 403) {
+        localStorage.removeItem("access_token");
+      }
+      return null;
+    }
+  }
+);
+
 const initialState: {
   user: User;
   status: "idle" | "loading" | "succeeded" | "failed";
@@ -121,6 +145,10 @@ const authSlice = createSlice({
           (action.payload as string) ||
           action.error?.message ||
           "Registration failed";
+      })
+      .addCase(checkAuth.fulfilled, (state, action: PayloadAction<any>) => {
+        state.user = action.payload || null;
+        state.status = action.payload ? "succeeded" : "idle";
       });
   },
 });

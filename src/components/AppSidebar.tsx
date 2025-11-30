@@ -1,4 +1,14 @@
-import { Map, Fish, Wrench, TrendingUp, Ship, Home, LogOut } from "lucide-react";
+import {
+  Map,
+  Fish,
+  Wrench,
+  TrendingUp,
+  Ship,
+  Home,
+  LogOut,
+  Anchor,
+  ClipboardCheck,
+} from "lucide-react";
 import { NavLink } from "@/components/NavLink";
 import {
   Sidebar,
@@ -19,7 +29,8 @@ const items = [
   { title: "Dashboard", url: "/dashboard", icon: TrendingUp },
   { title: "Hotspot Map", url: "/hotspot-map", icon: Map },
   { title: "Species & Spawning", url: "/species", icon: Fish },
-  { title: "Gear Management", url: "/gear", icon: Wrench },
+  { title: "Gear Management", url: "/gear", icon: Anchor },
+  { title: "Maintenance", url: "/maintenance", icon: Wrench },
   { title: "Market Trends", url: "/market", icon: TrendingUp },
   { title: "Trip Planner", url: "/trip-planner", icon: Ship },
 ];
@@ -33,13 +44,13 @@ export function AppSidebar() {
       <SidebarContent>
         <SidebarGroup>
           <div className={collapsed ? "flex justify-center py-4" : "px-4 py-2"}>
-             {collapsed ? (
-                <img src={logo} alt="Ocelyn" className="h-8 w-8" />
-             ) : (
-                <SidebarGroupLabel className="text-2xl font-bold bg-gradient-to-r from-violet-600 to-indigo-600 bg-clip-text text-transparent mb-4">
-                  Ocelyn
-                </SidebarGroupLabel>
-             )}
+            {collapsed ? (
+              <img src={logo} alt="Ocelyn" className="h-8 w-8" />
+            ) : (
+              <SidebarGroupLabel className="text-2xl font-bold bg-gradient-to-r from-violet-600 to-indigo-600 bg-clip-text text-transparent mb-4">
+                Ocelyn
+              </SidebarGroupLabel>
+            )}
           </div>
           <SidebarGroupContent>
             <SidebarMenu>
@@ -53,7 +64,9 @@ export function AppSidebar() {
                       activeClassName="bg-sidebar-accent text-sidebar-accent-foreground font-medium"
                     >
                       <item.icon className="h-4 w-4" />
-                      {!collapsed && <span className="text-base ml-3">{item.title}</span>}
+                      {!collapsed && (
+                        <span className="text-base ml-3">{item.title}</span>
+                      )}
                     </NavLink>
                   </SidebarMenuButton>
                 </SidebarMenuItem>

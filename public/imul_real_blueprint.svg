@@ -1,0 +1,73 @@
+<svg width="800" height="600" viewBox="0 0 800 600" xmlns="http://www.w3.org/2000/svg">
+  <!-- Blueprint Background -->
+  <rect width="100%" height="100%" fill="#003366" />
+  
+  <!-- Grid -->
+  <defs>
+    <pattern id="grid" width="50" height="50" patternUnits="userSpaceOnUse">
+      <path d="M 50 0 L 0 0 0 50" fill="none" stroke="#ffffff" stroke-width="0.5" opacity="0.2"/>
+    </pattern>
+  </defs>
+  <rect width="100%" height="100%" fill="url(#grid)" />
+
+  <!-- Styles -->
+  <style>
+    .hull { fill: none; stroke: #ffffff; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+    .detail { fill: none; stroke: #ffffff; stroke-width: 1; opacity: 0.8; }
+    .hidden { fill: none; stroke: #ffffff; stroke-width: 1; stroke-dasharray: 5,5; opacity: 0.5; }
+    .text { fill: #ffffff; font-family: 'Courier New', monospace; font-size: 14px; font-weight: bold; }
+    .dim { stroke: #ffffff; stroke-width: 0.5; opacity: 0.6; marker-end: url(#arrow); marker-start: url(#arrow); }
+  </style>
+
+  <!-- Arrow Marker -->
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="5" refY="5" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#ffffff" />
+    </marker>
+  </defs>
+
+  <!-- IMUL Drawing -->
+  <g transform="translate(50, 150) scale(0.9)">
+    <!-- Hull Profile -->
+    <path class="hull" d="M 0 150 Q 150 280 400 280 L 700 280 L 700 80 L 600 80 L 400 100 L 0 150 Z" />
+    
+    <!-- Waterline -->
+    <line x1="-20" y1="220" x2="720" y2="220" class="hidden" />
+    <text x="730" y="225" class="text" font-size="10">DWL</text>
+
+    <!-- Cabin -->
+    <path class="hull" d="M 400 100 L 400 20 L 580 20 L 580 85" />
+    <rect x="420" y="40" width="50" height="30" class="detail" />
+    <rect x="490" y="40" width="50" height="30" class="detail" />
+    
+    <!-- Mast & Rigging -->
+    <line x1="480" y1="20" x2="480" y2="-100" class="hull" />
+    <line x1="480" y1="-80" x2="200" y2="100" class="detail" />
+    <line x1="480" y1="-80" x2="650" y2="80" class="detail" />
+
+    <!-- Internal Compartments (X-Ray View) -->
+    <rect x="250" y="150" width="100" height="80" class="hidden" />
+    <text x="260" y="190" class="text">RSW TANK</text>
+
+    <rect x="450" y="180" width="120" height="60" class="hidden" />
+    <text x="460" y="210" class="text">ENGINE ROOM</text>
+
+    <!-- Propeller -->
+    <circle cx="680" cy="280" r="20" class="hidden" />
+    <path class="hull" d="M 680 280 L 695 290 M 680 280 L 665 290 M 680 280 L 680 260" />
+  </g>
+
+  <!-- Dimensions -->
+  <line x1="50" y1="450" x2="680" y2="450" class="dim" />
+  <text x="350" y="440" class="text">LOA: 14.50m</text>
+
+  <!-- Title Block -->
+  <g transform="translate(550, 480)">
+    <rect width="230" height="100" fill="none" stroke="#ffffff" stroke-width="2" />
+    <line x1="0" y1="30" x2="230" y2="30" stroke="#ffffff" />
+    <line x1="0" y1="60" x2="230" y2="60" stroke="#ffffff" />
+    <text x="10" y="20" class="text" font-size="18">VESSEL: IMUL-01</text>
+    <text x="10" y="50" class="text">TYPE: MULTI-DAY</text>
+    <text x="10" y="85" class="text">SCALE: 1:50</text>
+  </g>
+</svg>

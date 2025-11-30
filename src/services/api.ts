@@ -5,7 +5,7 @@ const BASE = (import.meta as any).env?.VITE_API_BASE || "http://localhost:8000";
 
 const api = axios.create({
   baseURL: BASE,
-  timeout: 30_000,
+  timeout: 300_000, // 5 minutes for Copernicus data fetching
 });
 // Allow cross-site cookies (httpOnly set by backend)
 api.defaults.withCredentials = true;
@@ -45,11 +45,13 @@ export async function postRegionPrediction(body: any) {
 
   // Check if request has bbox - use predict-region endpoint
   if (payload && payload.bbox) {
-    // Region-based prediction with bbox
-    const res = await api.post("/api/v1/hotspots/predict-region", payload);
+    // Region-based prediction with bbox (longer timeout for Copernicus API)
+    const res = await api.post("/api/v1/hotspots/predict-region", payload, {
+      timeout: 300_000, // 5 minutes
+    });
     return res.data;
   }
-  
+
   // The backend expects an array of GridCell objects at `/api/v1/hotspots/predict`.
   // Accept either an array input or a single-object input and convert to array.
   let sendBody: any = payload;
@@ -103,6 +105,97 @@ export async function authLogout() {
 
 export async function authMe() {
   const res = await api.get("/api/v1/auth/me");
+  return res.data;
+}
+
+// --- Maintenance API helpers ---
+export async function getVessels() {
+  const res = await api.get("/api/v1/maintenance/vessels");
+  return res.data.vessels;
+}
+
+export async function getVessel(vesselId: string) {
+  const res = await api.get(`/api/v1/maintenance/vessels/${vesselId}`);
+  return res.data;
+}
+
+export async function createVessel(vessel: any) {
+  const res = await api.post("/api/v1/maintenance/vessels", vessel);
+  return res.data;
+}
+
+export async function updateVessel(vesselId: string, vessel: any) {
+  const res = await api.put(`/api/v1/maintenance/vessels/${vesselId}`, vessel);
+  return res.data;
+}
+
+export async function deleteVessel(vesselId: string) {
+  const res = await api.delete(`/api/v1/maintenance/vessels/${vesselId}`);
+  return res.data;
+}
+
+export async function updateSystemStatus(
+  vesselId: string,
+  systemId: string,
+  status: string
+) {
+  const res = await api.patch(
+    `/api/v1/maintenance/vessels/${vesselId}/systems/${systemId}/status`,
+    { status }
+  );
+  return res.data;
+}
+
+export async function createMaintenanceTask(
+  vesselId: string,
+  systemId: string,
+  task: string,
+  due: string,
+  priority: string
+) {
+  const res = await api.post(
+    `/api/v1/maintenance/vessels/${vesselId}/systems/${systemId}/tasks`,
+    { systemId, task, due, priority }
+  );
+  return res.data;
+}
+
+export async function updateMaintenanceTask(
+  vesselId: string,
+  systemId: string,
+  taskId: string,
+  updates: any
+) {
+  const res = await api.patch(
+    `/api/v1/maintenance/vessels/${vesselId}/systems/${systemId}/tasks/${taskId}`,
+    updates
+  );
+  return res.data;
+}
+
+export async function deleteMaintenanceTask(
+  vesselId: string,
+  systemId: string,
+  taskId: string
+) {
+  const res = await api.delete(
+    `/api/v1/maintenance/vessels/${vesselId}/systems/${systemId}/tasks/${taskId}`
+  );
+  return res.data;
+}
+
+export async function createServiceLog(
+  vesselId: string,
+  systemId: string,
+  date: string,
+  technician: string,
+  notes: string,
+  cost?: string
+) {
+  const res = await api.post(
+    `/api/v1/maintenance/vessels/${vesselId}/systems/${systemId}/service-logs`,
+    { systemId, date, technician, notes, cost }
+  );
   return res.data;
 }
 
