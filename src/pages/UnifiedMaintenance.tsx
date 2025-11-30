@@ -1,8 +1,6 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
 
-// Blueprint zoom state
-// (must be inside the component, not at the top level)
 import {
   Card,
   CardContent,
@@ -16,6 +14,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Skeleton } from "@/components/ui/skeleton";
 import {
   Dialog,
   DialogContent,
@@ -67,11 +66,14 @@ import {
   CheckCircle2,
   Image as ImageIcon,
   Upload,
+  User,
+  FileText,
+  DollarSign,
+  AlertTriangle,
 } from "lucide-react";
 import AuthDebug from "@/components/AuthDebug";
 
 export default function UnifiedMaintenance() {
-  // Blueprint zoom state
   const [activeSystemId, setActiveSystemId] = useState<string | null>(null);
   const dispatch = useDispatch<AppDispatch>();
   const { toast } = useToast();
@@ -93,7 +95,6 @@ export default function UnifiedMaintenance() {
   const [selectedVesselId, setSelectedVesselId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState("overview");
 
-  // Vessel creation dialog
   const [vesselDialogOpen, setVesselDialogOpen] = useState(false);
   const [vesselForm, setVesselForm] = useState({
     name: "",
@@ -101,7 +102,6 @@ export default function UnifiedMaintenance() {
     blueprintUrl: "",
   });
 
-  // Rule creation/edit dialog
   const [ruleDialogOpen, setRuleDialogOpen] = useState(false);
   const [editingRule, setEditingRule] = useState<MaintenanceRule | null>(null);
   const [ruleForm, setRuleForm] = useState({
@@ -113,14 +113,12 @@ export default function UnifiedMaintenance() {
     description: "",
   });
 
-  // Trip completion dialog
   const [tripDialogOpen, setTripDialogOpen] = useState(false);
   const [tripForm, setTripForm] = useState({
     duration_hours: 0,
     trip_date: new Date().toISOString().split("T")[0],
   });
 
-  // Maintenance log dialog
   const [maintenanceDialogOpen, setMaintenanceDialogOpen] = useState(false);
   const [maintenanceForm, setMaintenanceForm] = useState({
     system_id: "engine",
@@ -133,7 +131,6 @@ export default function UnifiedMaintenance() {
     trips_at_service: undefined as number | undefined,
   });
 
-  // Expanded parts inline viewer
   const [expandedParts, setExpandedParts] = useState<Record<string, boolean>>(
     {}
   );
@@ -144,7 +141,6 @@ export default function UnifiedMaintenance() {
     partName: string
   ) => {
     const isExpanded = !!expandedParts[partKey];
-    // If opening, fetch logs for that part (backend supports filtering)
     if (!isExpanded && selectedVesselId) {
       dispatch(
         fetchMaintenanceLogs({ vesselId: selectedVesselId, systemId, partName })
@@ -157,13 +153,11 @@ export default function UnifiedMaintenance() {
     ? logs[selectedVesselId] || []
     : [];
 
-  // Initialize
   useEffect(() => {
     dispatch(fetchVessels());
     dispatch(fetchRules(undefined));
   }, [dispatch]);
 
-  // Fetch summary when vessel selected
   useEffect(() => {
     if (selectedVesselId) {
       dispatch(fetchMaintenanceSummary(selectedVesselId));
@@ -171,14 +165,26 @@ export default function UnifiedMaintenance() {
     }
   }, [selectedVesselId, dispatch]);
 
-  // NOTE: Do not auto-select a vessel — show an explicit placeholder
-  // so the user consciously picks the vessel to work with.
+  useEffect(() => {
+    if (!selectedVesselId) return;
+    if (activeTab === "tracking") {
+      dispatch(fetchRules(undefined));
+      dispatch(fetchVesselState(selectedVesselId));
+      dispatch(fetchMaintenanceSummary(selectedVesselId));
+      dispatch(fetchMaintenanceLogs({ vesselId: selectedVesselId }));
+    }
+    if (activeTab === "rules") {
+      dispatch(fetchRules(undefined));
+    }
+    if (activeTab === "overview") {
+      dispatch(fetchVesselState(selectedVesselId));
+    }
+  }, [activeTab, selectedVesselId, dispatch]);
 
   const currentSummary = selectedVesselId ? summaries[selectedVesselId] : null;
   const currentState = selectedVesselId ? vesselStates[selectedVesselId] : null;
   const selectedVessel = vessels.find((v) => v.id === selectedVesselId);
 
-  // Vessel type to blueprint mapping
   const getVesselBlueprint = (type: string) => {
     const blueprintMap: Record<string, string> = {
       "Multi-Day Vessel": "/imul_real_blueprint.png",
@@ -188,7 +194,6 @@ export default function UnifiedMaintenance() {
     return blueprintMap[type] || "/imul_real_blueprint.png";
   };
 
-  // Handlers
   const handleCreateVessel = async (e: React.FormEvent) => {
     e.preventDefault();
     try {
@@ -312,7 +317,6 @@ export default function UnifiedMaintenance() {
     e.preventDefault();
     if (!selectedVesselId) return;
 
-    // Validate trip duration
     if (
       !tripForm.duration_hours ||
       isNaN(tripForm.duration_hours) ||
@@ -371,8 +375,11 @@ export default function UnifiedMaintenance() {
             technician: maintenanceForm.technician,
             notes: maintenanceForm.notes,
             cost: maintenanceForm.cost,
-            engine_hours_at_service: maintenanceForm.engine_hours_at_service,
-            trips_at_service: maintenanceForm.trips_at_service,
+            engine_hours_at_service:
+              maintenanceForm.engine_hours_at_service ??
+              currentState?.engine_hours,
+            trips_at_service:
+              maintenanceForm.trips_at_service ?? currentState?.total_trips,
           },
         })
       ).unwrap();
@@ -391,7 +398,6 @@ export default function UnifiedMaintenance() {
         engine_hours_at_service: undefined,
         trips_at_service: undefined,
       });
-      // Refresh state, summary and logs for immediate UI update
       dispatch(fetchVesselState(selectedVesselId));
       dispatch(fetchMaintenanceSummary(selectedVesselId));
       dispatch(
@@ -426,25 +432,125 @@ export default function UnifiedMaintenance() {
 
   if (vesselsLoading || rulesLoading) {
     return (
-      <div className="flex items-center justify-center h-screen">
+      <div className="flex items-center justify-center min-h-[600px] p-6">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-primary mx-auto mb-4"></div>
-          <p>Loading...</p>
+          {/* Vessel Riding Animation */}
+          <div className="relative w-64 h-64 mx-auto mb-8">
+            {/* Waves */}
+            <svg
+              className="absolute inset-0 w-full h-full"
+              viewBox="0 0 200 200"
+            >
+              {/* Wave 1 */}
+              <path
+                d="M0,100 Q25,80 50,100 T100,100 T150,100 T200,100"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="3"
+                className="text-blue-400 dark:text-blue-500"
+                opacity="0.6"
+              >
+                <animate
+                  attributeName="d"
+                  dur="2s"
+                  repeatCount="indefinite"
+                  values="M0,100 Q25,80 50,100 T100,100 T150,100 T200,100;
+                          M0,100 Q25,120 50,100 T100,100 T150,100 T200,100;
+                          M0,100 Q25,80 50,100 T100,100 T150,100 T200,100"
+                />
+              </path>
+              {/* Wave 2 */}
+              <path
+                d="M0,110 Q25,90 50,110 T100,110 T150,110 T200,110"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                className="text-blue-300 dark:text-blue-400"
+                opacity="0.4"
+              >
+                <animate
+                  attributeName="d"
+                  dur="2.5s"
+                  repeatCount="indefinite"
+                  values="M0,110 Q25,90 50,110 T100,110 T150,110 T200,110;
+                          M0,110 Q25,130 50,110 T100,110 T150,110 T200,110;
+                          M0,110 Q25,90 50,110 T100,110 T150,110 T200,110"
+                />
+              </path>
+              {/* Wave 3 */}
+              <path
+                d="M0,120 Q25,100 50,120 T100,120 T150,120 T200,120"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                className="text-blue-200 dark:text-blue-300"
+                opacity="0.3"
+              >
+                <animate
+                  attributeName="d"
+                  dur="3s"
+                  repeatCount="indefinite"
+                  values="M0,120 Q25,100 50,120 T100,120 T150,120 T200,120;
+                          M0,120 Q25,140 50,120 T100,120 T150,120 T200,120;
+                          M0,120 Q25,100 50,120 T100,120 T150,120 T200,120"
+                />
+              </path>
+            </svg>
+
+            {/* Vessel/Ship */}
+            <div className="absolute top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2">
+              <Ship
+                className="w-16 h-16 text-violet-600 dark:text-violet-400"
+                style={{
+                  animation: "float 3s ease-in-out infinite",
+                }}
+              />
+            </div>
+          </div>
+
+          {/* Loading Text */}
+          <div className="space-y-2">
+            <h3 className="text-xl font-semibold text-slate-900 dark:text-white">
+              Loading Vessel Data...
+            </h3>
+            <p className="text-sm text-slate-600 dark:text-slate-400">
+              Preparing your maintenance dashboard
+            </p>
+          </div>
+
+          {/* Animated Dots */}
+          <div className="flex justify-center gap-2 mt-4">
+            <div
+              className="w-2 h-2 bg-violet-600 rounded-full animate-bounce"
+              style={{ animationDelay: "0ms" }}
+            ></div>
+            <div
+              className="w-2 h-2 bg-violet-600 rounded-full animate-bounce"
+              style={{ animationDelay: "150ms" }}
+            ></div>
+            <div
+              className="w-2 h-2 bg-violet-600 rounded-full animate-bounce"
+              style={{ animationDelay: "300ms" }}
+            ></div>
+          </div>
         </div>
+
+        {/* Add float animation to global styles */}
+        <style>{`
+          @keyframes float {
+            0%, 100% { transform: translateY(0px) rotate(-2deg); }
+            50% { transform: translateY(-15px) rotate(2deg); }
+          }
+        `}</style>
       </div>
     );
   }
 
-  // Render debug helper only when explicitly enabled via env var
-  const showAuthDebug =
-    (import.meta as any).env?.VITE_SHOW_AUTH_DEBUG === "true";
-
-  // If auth check finished and there's no user, show a login prompt
   const showLoginPrompt = auth && !auth.loading && !auth.user;
   if (showLoginPrompt) {
     return (
-      <div className="p-8">
-        <Card className="max-w-lg mx-auto text-center p-8">
+      <div className="flex items-center justify-center h-full min-h-[600px] p-6">
+        <Card className="max-w-lg w-full mx-auto text-center p-8">
           <CardHeader>
             <CardTitle>Please login to access Maintenance</CardTitle>
             <CardDescription>
@@ -463,19 +569,12 @@ export default function UnifiedMaintenance() {
   }
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
-      {/* Header */}
+    <div className="space-y-6 p-6">
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold">Vessel Maintenance</h1>
-          <p className="text-muted-foreground">
-            Manage vessels, track maintenance, and monitor status
-          </p>
-        </div>
         <div className="flex gap-2">
           <Dialog open={vesselDialogOpen} onOpenChange={setVesselDialogOpen}>
             <DialogTrigger asChild>
-              <Button>
+              <Button className="bg-violet-600 hover:bg-violet-700 text-white">
                 <Plus className="mr-2 h-4 w-4" />
                 Add Vessel
               </Button>
@@ -577,7 +676,10 @@ export default function UnifiedMaintenance() {
 
           <Dialog open={ruleDialogOpen} onOpenChange={setRuleDialogOpen}>
             <DialogTrigger asChild>
-              <Button variant="outline">
+              <Button
+                variant="outline"
+                className="border-violet-500/30 hover:bg-violet-500/10 text-violet-600 dark:text-violet-400"
+              >
                 <Wrench className="mr-2 h-4 w-4" />
                 Add Rule
               </Button>
@@ -704,22 +806,23 @@ export default function UnifiedMaintenance() {
         </div>
       </div>
 
-      {/* Vessel Selector */}
       {vessels.length > 0 && (
-        <Card>
+        <Card className="border-violet-100 dark:border-violet-900/50 shadow-sm hover:shadow-md transition-shadow">
           <CardContent className="pt-6">
-            <Label>Selected Vessel</Label>
+            <Label className="text-violet-900 dark:text-violet-100">
+              Selected Vessel
+            </Label>
             <Select
               value={selectedVesselId || ""}
               onValueChange={setSelectedVesselId}
             >
-              <SelectTrigger className="mt-2">
+              <SelectTrigger className="mt-2 border-violet-200 dark:border-violet-800 focus:ring-violet-500">
                 <SelectValue placeholder="Select a vessel" />
               </SelectTrigger>
               <SelectContent>
                 {vessels.map((v) => (
                   <SelectItem key={v.id} value={v.id}>
-                    <Ship className="inline mr-2 h-4 w-4" />
+                    <Ship className="inline mr-2 h-4 w-4 text-violet-500" />
                     {v.name} - {v.type}
                   </SelectItem>
                 ))}
@@ -730,9 +833,11 @@ export default function UnifiedMaintenance() {
       )}
 
       {vessels.length === 0 && (
-        <Card className="p-12 text-center">
-          <Ship className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
-          <h3 className="text-lg font-semibold mb-2">No Vessels Yet</h3>
+        <Card className="p-12 text-center border-dashed border-2 border-violet-200 dark:border-violet-900/50 bg-violet-50/50 dark:bg-violet-950/10">
+          <Ship className="mx-auto h-12 w-12 text-violet-400 mb-4" />
+          <h3 className="text-lg font-semibold mb-2 text-violet-900 dark:text-violet-100">
+            No Vessels Yet
+          </h3>
           <p className="text-muted-foreground mb-4">
             Create your first vessel to start tracking maintenance
           </p>
@@ -748,6 +853,7 @@ export default function UnifiedMaintenance() {
               }
               setVesselDialogOpen(true);
             }}
+            className="bg-violet-600 hover:bg-violet-700 text-white"
           >
             <Plus className="mr-2 h-4 w-4" />
             Create First Vessel
@@ -755,92 +861,73 @@ export default function UnifiedMaintenance() {
         </Card>
       )}
 
-      {/* If there are vessels but none selected, show a placeholder prompting selection */}
-      {vessels.length > 0 && !selectedVesselId && (
-        <Card className="p-8 text-center">
-          <Ship className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
-          <h3 className="text-lg font-semibold mb-2">Select a Vessel</h3>
-          <p className="text-muted-foreground mb-4">
-            Choose a vessel from the list to view maintenance details.
-          </p>
-          <div className="max-w-sm mx-auto">
-            <Select
-              value={selectedVesselId || ""}
-              onValueChange={setSelectedVesselId}
-            >
-              <SelectTrigger>
-                <SelectValue placeholder="Select a vessel" />
-              </SelectTrigger>
-              <SelectContent>
-                {vessels.map((v) => (
-                  <SelectItem key={v.id} value={v.id}>
-                    <Ship className="inline mr-2 h-4 w-4" />
-                    {v.name} - {v.type}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <div className="mt-4">
-              <Button
-                onClick={() => {
-                  if (!user) {
-                    toast({
-                      title: "Login required",
-                      description: "Please login to create a vessel",
-                      variant: "destructive",
-                    });
-                    return;
-                  }
-                  setVesselDialogOpen(true);
-                }}
-              >
-                <Plus className="mr-2 h-4 w-4" />
-                Create Vessel
-              </Button>
-            </div>
-          </div>
-        </Card>
-      )}
-
-      {/* Main Content - Tabs */}
       {selectedVesselId && (
-        <Tabs value={activeTab} onValueChange={setActiveTab}>
-          <TabsList className="grid w-full grid-cols-4">
-            <TabsTrigger value="overview">Overview</TabsTrigger>
-            <TabsTrigger value="tracking">Status Tracking</TabsTrigger>
-            <TabsTrigger value="rules">Maintenance Rules</TabsTrigger>
-            <TabsTrigger value="blueprint">Blueprint</TabsTrigger>
+        <Tabs
+          value={activeTab}
+          onValueChange={setActiveTab}
+          className="space-y-6"
+        >
+          <TabsList className="grid w-full grid-cols-4 bg-violet-50 dark:bg-violet-950/30 p-1 rounded-lg border border-violet-200 dark:border-violet-800">
+            <TabsTrigger
+              value="overview"
+              className="data-[state=active]:bg-violet-600 data-[state=active]:text-white data-[state=active]:shadow-md transition-all duration-200 rounded-md"
+            >
+              Overview
+            </TabsTrigger>
+            <TabsTrigger
+              value="tracking"
+              className="data-[state=active]:bg-violet-600 data-[state=active]:text-white data-[state=active]:shadow-md transition-all duration-200 rounded-md"
+            >
+              Status Tracking
+            </TabsTrigger>
+            <TabsTrigger
+              value="rules"
+              className="data-[state=active]:bg-violet-600 data-[state=active]:text-white data-[state=active]:shadow-md transition-all duration-200 rounded-md"
+            >
+              Maintenance Rules
+            </TabsTrigger>
+            <TabsTrigger
+              value="blueprint"
+              className="data-[state=active]:bg-violet-600 data-[state=active]:text-white data-[state=active]:shadow-md transition-all duration-200 rounded-md"
+            >
+              Blueprint
+            </TabsTrigger>
           </TabsList>
 
-          {/* Overview Tab */}
           <TabsContent value="overview" className="space-y-4">
             <div className="grid grid-cols-3 gap-4">
-              <Card>
+              <Card className="border-violet-100 dark:border-violet-900/50 shadow-sm">
                 <CardHeader>
-                  <CardTitle className="text-sm">Engine Hours</CardTitle>
+                  <CardTitle className="text-sm text-violet-900 dark:text-violet-100">
+                    Engine Hours
+                  </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold">
+                  <div className="text-2xl font-bold text-violet-700 dark:text-violet-300">
                     {currentState?.engine_hours || 0}h
                   </div>
                 </CardContent>
               </Card>
-              <Card>
+              <Card className="border-violet-100 dark:border-violet-900/50 shadow-sm">
                 <CardHeader>
-                  <CardTitle className="text-sm">Total Trips</CardTitle>
+                  <CardTitle className="text-sm text-violet-900 dark:text-violet-100">
+                    Total Trips
+                  </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-2xl font-bold">
+                  <div className="text-2xl font-bold text-violet-700 dark:text-violet-300">
                     {currentState?.total_trips || 0}
                   </div>
                 </CardContent>
               </Card>
-              <Card>
+              <Card className="border-violet-100 dark:border-violet-900/50 shadow-sm">
                 <CardHeader>
-                  <CardTitle className="text-sm">Last Trip</CardTitle>
+                  <CardTitle className="text-sm text-violet-900 dark:text-violet-100">
+                    Last Trip
+                  </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="text-sm">
+                  <div className="text-sm text-violet-700 dark:text-violet-300">
                     {currentState?.last_trip_date
                       ? new Date(
                           currentState.last_trip_date
@@ -854,7 +941,7 @@ export default function UnifiedMaintenance() {
             <div className="flex gap-4">
               <Dialog open={tripDialogOpen} onOpenChange={setTripDialogOpen}>
                 <DialogTrigger asChild>
-                  <Button>
+                  <Button className="bg-violet-600 hover:bg-violet-700 text-white">
                     <Ship className="mr-2 h-4 w-4" />
                     Complete Trip
                   </Button>
@@ -881,6 +968,7 @@ export default function UnifiedMaintenance() {
                             })
                           }
                           required
+                          className="focus-visible:ring-violet-500"
                         />
                       </div>
                       <div className="grid gap-2">
@@ -895,6 +983,7 @@ export default function UnifiedMaintenance() {
                             })
                           }
                           required
+                          className="focus-visible:ring-violet-500"
                         />
                       </div>
                     </div>
@@ -906,18 +995,21 @@ export default function UnifiedMaintenance() {
                       >
                         Cancel
                       </Button>
-                      <Button type="submit">Log Trip</Button>
+                      <Button
+                        type="submit"
+                        className="bg-violet-600 hover:bg-violet-700 text-white"
+                      >
+                        Log Trip
+                      </Button>
                     </DialogFooter>
                   </form>
                 </DialogContent>
               </Dialog>
 
-              {/* Inline logs viewer removed dialog in favor of expandable "See more" below each part */}
-
               <Button
                 variant="outline"
+                className="border-violet-500/30 hover:bg-violet-500/10 text-violet-600 dark:text-violet-400"
                 onClick={() => {
-                  // open maintenance dialog and ensure Tracking tab is active
                   setActiveTab("tracking");
                   setMaintenanceDialogOpen(true);
                 }}
@@ -928,19 +1020,25 @@ export default function UnifiedMaintenance() {
             </div>
           </TabsContent>
 
-          {/* Status Tracking Tab */}
           <TabsContent value="tracking" className="space-y-4">
             {currentSummary && (
               <div className="space-y-4">
-                <Card>
+                <Card className="border-violet-100 dark:border-violet-900/50 shadow-sm">
                   <CardHeader>
                     <div className="flex items-center justify-between">
-                      <CardTitle>Overall Status</CardTitle>
+                      <CardTitle className="text-violet-900 dark:text-violet-100">
+                        Overall Status
+                      </CardTitle>
                       <Badge
                         variant={
                           currentSummary.overall_status === "operational"
                             ? "default"
                             : "destructive"
+                        }
+                        className={
+                          currentSummary.overall_status === "operational"
+                            ? "bg-green-500 hover:bg-green-600"
+                            : ""
                         }
                       >
                         {currentSummary.overall_status.toUpperCase()}
@@ -950,10 +1048,13 @@ export default function UnifiedMaintenance() {
                 </Card>
 
                 {currentSummary.systems.map((system) => (
-                  <Card key={system.system_id}>
+                  <Card
+                    key={system.system_id}
+                    className="border-violet-100 dark:border-violet-900/50 shadow-sm"
+                  >
                     <CardHeader>
                       <div className="flex items-center justify-between">
-                        <CardTitle className="text-lg">
+                        <CardTitle className="text-lg text-violet-900 dark:text-violet-100">
                           {system.system_name}
                         </CardTitle>
                         <div
@@ -977,10 +1078,10 @@ export default function UnifiedMaintenance() {
                             return (
                               <div
                                 key={part.name}
-                                className="border rounded-lg p-3"
+                                className="border border-violet-100 dark:border-violet-800/30 rounded-lg p-3 bg-violet-50/30 dark:bg-violet-900/10"
                               >
                                 <div className="flex items-center justify-between mb-2">
-                                  <span className="font-medium">
+                                  <span className="font-medium text-violet-900 dark:text-violet-100">
                                     {part.name}
                                   </span>
                                   <div className="flex items-center gap-2">
@@ -1005,6 +1106,7 @@ export default function UnifiedMaintenance() {
                                           part.name
                                         )
                                       }
+                                      className="text-violet-600 hover:text-violet-700 hover:bg-violet-100 dark:hover:bg-violet-900/30"
                                     >
                                       {expanded ? "Hide" : "See more"}
                                     </Button>
@@ -1013,7 +1115,6 @@ export default function UnifiedMaintenance() {
                                 <p className="text-sm text-muted-foreground">
                                   {part.message}
                                 </p>
-                                {/* Show explanation and guidance when overdue */}
                                 {part.status === "overdue" &&
                                   (() => {
                                     const matchingRule = rules.find(
@@ -1040,15 +1141,15 @@ export default function UnifiedMaintenance() {
                                         : `Perform the required maintenance.`;
 
                                     return (
-                                      <Card className="mt-3 border-red-200 bg-red-50">
-                                        <CardContent>
-                                          <div className="text-sm font-semibold text-red-700">
+                                      <Card className="mt-3 border-red-200 bg-red-50 dark:bg-red-900/10">
+                                        <CardContent className="pt-4">
+                                          <div className="text-sm font-semibold text-red-700 dark:text-red-400">
                                             Why this is overdue
                                           </div>
                                           <div className="text-sm text-muted-foreground mt-1">
                                             {why}
                                           </div>
-                                          <div className="text-sm font-semibold text-red-700 mt-3">
+                                          <div className="text-sm font-semibold text-red-700 dark:text-red-400 mt-3">
                                             What to do
                                           </div>
                                           <div className="text-sm text-muted-foreground mt-1">
@@ -1057,8 +1158,8 @@ export default function UnifiedMaintenance() {
                                           <div className="mt-3">
                                             <Button
                                               size="sm"
+                                              className="bg-red-600 hover:bg-red-700 text-white"
                                               onClick={() => {
-                                                // pre-fill maintenance form and open dialog
                                                 setMaintenanceForm({
                                                   ...maintenanceForm,
                                                   system_id: system.system_id,
@@ -1071,7 +1172,6 @@ export default function UnifiedMaintenance() {
                                                   trips_at_service:
                                                     currentState?.total_trips,
                                                 });
-                                                // ensure Status Tracking tab is active when opening
                                                 setActiveTab("tracking");
                                                 setMaintenanceDialogOpen(true);
                                               }}
@@ -1098,32 +1198,67 @@ export default function UnifiedMaintenance() {
                                       </div>
                                     ) : (
                                       filteredLogs.map((l) => (
-                                        <Card key={l.id} className="bg-muted/5">
-                                          <CardContent>
-                                            <div className="flex items-center justify-between">
-                                              <div className="text-sm font-medium">
-                                                {l.part_name} — {l.system_id}
+                                        <Card
+                                          key={l.id}
+                                          className="bg-white dark:bg-slate-950 border-violet-100 dark:border-violet-900/30 shadow-sm hover:shadow-md transition-all duration-200"
+                                        >
+                                          <CardContent className="p-4">
+                                            <div className="flex items-start justify-between mb-3">
+                                              <div className="flex items-center gap-2">
+                                                <div className="h-8 w-8 rounded-full bg-violet-100 dark:bg-violet-900/30 flex items-center justify-center text-violet-600 dark:text-violet-400">
+                                                  <Wrench className="h-4 w-4" />
+                                                </div>
+                                                <div>
+                                                  <div className="font-semibold text-slate-900 dark:text-slate-100">
+                                                    {l.part_name}
+                                                  </div>
+                                                  <div className="text-xs text-muted-foreground">
+                                                    {l.system_id}
+                                                  </div>
+                                                </div>
                                               </div>
-                                              <div className="text-xs text-muted-foreground">
+                                              <Badge
+                                                variant="outline"
+                                                className="bg-violet-50 dark:bg-violet-900/10 text-violet-700 dark:text-violet-300 border-violet-200 dark:border-violet-800"
+                                              >
                                                 {l.done_at
                                                   ? new Date(
                                                       l.done_at
                                                     ).toLocaleDateString()
-                                                  : "-"}
-                                              </div>
+                                                  : "No Date"}
+                                              </Badge>
                                             </div>
-                                            <div className="text-sm text-muted-foreground mt-2">
-                                              <div>
-                                                <strong>Technician:</strong>{" "}
-                                                {l.technician || "-"}
+
+                                            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-sm mt-2 bg-slate-50 dark:bg-slate-900/50 p-3 rounded-lg border border-slate-100 dark:border-slate-800">
+                                              <div className="flex items-center gap-2 text-slate-600 dark:text-slate-400">
+                                                <User className="h-4 w-4 text-violet-500 shrink-0" />
+                                                <span
+                                                  className="truncate"
+                                                  title={
+                                                    l.technician || "Unknown"
+                                                  }
+                                                >
+                                                  {l.technician ||
+                                                    "Unknown Technician"}
+                                                </span>
                                               </div>
-                                              <div className="mt-1">
-                                                <strong>Notes:</strong>{" "}
-                                                {l.notes || "-"}
+                                              <div className="flex items-center gap-2 text-slate-600 dark:text-slate-400">
+                                                <DollarSign className="h-4 w-4 text-violet-500 shrink-0" />
+                                                <span>
+                                                  {l.cost
+                                                    ? `${l.cost} LKR`
+                                                    : "No Cost Recorded"}
+                                                </span>
                                               </div>
-                                              <div className="mt-1">
-                                                <strong>Cost:</strong>{" "}
-                                                {l.cost || "-"}
+                                              <div className="flex items-center gap-2 text-slate-600 dark:text-slate-400 md:col-span-3">
+                                                <FileText className="h-4 w-4 text-violet-500 shrink-0" />
+                                                <span
+                                                  className="truncate"
+                                                  title={l.notes || "No notes"}
+                                                >
+                                                  {l.notes ||
+                                                    "No notes provided"}
+                                                </span>
                                               </div>
                                             </div>
                                           </CardContent>
@@ -1144,9 +1279,9 @@ export default function UnifiedMaintenance() {
             )}
 
             {!currentSummary && (
-              <Card className="p-12 text-center">
-                <AlertCircle className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
-                <h3 className="text-lg font-semibold mb-2">
+              <Card className="p-12 text-center border-dashed border-2 border-violet-200 dark:border-violet-900/50 bg-violet-50/50 dark:bg-violet-950/10">
+                <AlertCircle className="mx-auto h-12 w-12 text-violet-400 mb-4" />
+                <h3 className="text-lg font-semibold mb-2 text-violet-900 dark:text-violet-100">
                   No Maintenance Data
                 </h3>
                 <p className="text-muted-foreground">
@@ -1156,16 +1291,20 @@ export default function UnifiedMaintenance() {
             )}
           </TabsContent>
 
-          {/* Rules Tab */}
           <TabsContent value="rules" className="space-y-4">
             {rules.length === 0 && (
-              <Card className="p-12 text-center">
-                <Wrench className="mx-auto h-12 w-12 text-muted-foreground mb-4" />
-                <h3 className="text-lg font-semibold mb-2">No Rules Defined</h3>
+              <Card className="p-12 text-center border-dashed border-2 border-violet-200 dark:border-violet-900/50 bg-violet-50/50 dark:bg-violet-950/10">
+                <Wrench className="mx-auto h-12 w-12 text-violet-400 mb-4" />
+                <h3 className="text-lg font-semibold mb-2 text-violet-900 dark:text-violet-100">
+                  No Rules Defined
+                </h3>
                 <p className="text-muted-foreground mb-4">
                   Create maintenance rules to track when service is due
                 </p>
-                <Button onClick={() => setRuleDialogOpen(true)}>
+                <Button
+                  onClick={() => setRuleDialogOpen(true)}
+                  className="bg-violet-600 hover:bg-violet-700 text-white"
+                >
                   <Plus className="mr-2 h-4 w-4" />
                   Create First Rule
                 </Button>
@@ -1175,14 +1314,17 @@ export default function UnifiedMaintenance() {
             {rules.length > 0 && (
               <div className="grid gap-4">
                 {rules.map((rule) => (
-                  <Card key={rule.id}>
+                  <Card
+                    key={rule.id}
+                    className="border-violet-100 dark:border-violet-900/50 shadow-sm hover:shadow-md transition-shadow"
+                  >
                     <CardHeader>
                       <div className="flex items-center justify-between">
                         <div>
-                          <CardTitle className="text-lg">
+                          <CardTitle className="text-lg text-violet-900 dark:text-violet-100">
                             {rule.part_name}
                           </CardTitle>
-                          <CardDescription>
+                          <CardDescription className="text-violet-600/80 dark:text-violet-400/80">
                             {rule.system_id} - Every {rule.interval_value}{" "}
                             {rule.trigger_type}
                           </CardDescription>
@@ -1193,6 +1335,7 @@ export default function UnifiedMaintenance() {
                             size="icon"
                             onClick={() => handleEditRule(rule)}
                             title="Edit rule"
+                            className="text-violet-600 hover:text-violet-700 hover:bg-violet-100 dark:hover:bg-violet-900/30"
                           >
                             <Edit className="h-4 w-4" />
                           </Button>
@@ -1216,6 +1359,7 @@ export default function UnifiedMaintenance() {
                               }
                             }}
                             title="Delete rule"
+                            className="text-red-500 hover:text-red-600 hover:bg-red-100 dark:hover:bg-red-900/30"
                           >
                             <Trash2 className="h-4 w-4" />
                           </Button>
@@ -1228,20 +1372,26 @@ export default function UnifiedMaintenance() {
                           <span className="text-muted-foreground">
                             Interval:
                           </span>{" "}
-                          {rule.interval_value} {rule.trigger_type}
+                          <span className="font-medium text-slate-700 dark:text-slate-300">
+                            {rule.interval_value} {rule.trigger_type}
+                          </span>
                         </p>
                         <p>
                           <span className="text-muted-foreground">
                             Warning:
                           </span>{" "}
-                          {rule.warning_before} {rule.trigger_type} before due
+                          <span className="font-medium text-slate-700 dark:text-slate-300">
+                            {rule.warning_before} {rule.trigger_type} before due
+                          </span>
                         </p>
                         {rule.description && (
                           <p>
                             <span className="text-muted-foreground">
                               Notes:
                             </span>{" "}
-                            {rule.description}
+                            <span className="italic text-slate-600 dark:text-slate-400">
+                              {rule.description}
+                            </span>
                           </p>
                         )}
                       </div>
@@ -1252,7 +1402,6 @@ export default function UnifiedMaintenance() {
             )}
           </TabsContent>
 
-          {/* Blueprint Tab */}
           <TabsContent value="blueprint">
             {!selectedVessel ? (
               <div className="text-center py-12 text-muted-foreground">
@@ -1261,8 +1410,7 @@ export default function UnifiedMaintenance() {
               </div>
             ) : (
               <div className="flex gap-6 min-h-[600px]">
-                {/* Sidebar Navigation */}
-                <div className="w-64 bg-card rounded-xl shadow-inner border border-[#004488] p-4 flex flex-col gap-2">
+                <div className="w-64 bg-card rounded-xl border p-4 flex flex-col gap-2">
                   <div className="font-bold text-lg mb-2 text-center">
                     Systems
                   </div>
@@ -1280,15 +1428,13 @@ export default function UnifiedMaintenance() {
                   ))}
                 </div>
 
-                {/* Main Blueprint Viewer */}
                 <div className="flex-1 flex items-center justify-center relative">
-                  {/* If no system selected, show vessel blueprint */}
                   {!activeSystemId ? (
                     <div className="flex flex-col items-center w-full">
                       <div className="font-bold text-xl mb-2">
                         {selectedVessel.name} - {selectedVessel.type}
                       </div>
-                      <div className="bg-[#003366] rounded-xl overflow-hidden relative shadow-inner border border-[#004488] min-h-[500px] flex items-center justify-center">
+                      <div className="bg-[#003366] rounded-xl overflow-hidden relative shadow-inner border border-[#004488] min-h-[500px] flex items-center justify-center w-full">
                         <div
                           className="absolute inset-0 opacity-30 pointer-events-none"
                           style={{
@@ -1335,7 +1481,6 @@ export default function UnifiedMaintenance() {
                       </div>
                     </div>
                   ) : (
-                    // Zoomed system blueprint
                     (() => {
                       const system = selectedVessel.systems?.find(
                         (s) => s.id === activeSystemId
@@ -1385,7 +1530,6 @@ export default function UnifiedMaintenance() {
                                 );
                               }}
                             />
-                            {/* Render Sub-parts if any */}
                             {system.subParts?.map((sub) => (
                               <div
                                 key={sub.id}
@@ -1432,7 +1576,7 @@ export default function UnifiedMaintenance() {
           </TabsContent>
         </Tabs>
       )}
-      {/* Global Maintenance Dialog (appears regardless of active tab) */}
+
       <Dialog
         open={maintenanceDialogOpen}
         onOpenChange={setMaintenanceDialogOpen}
@@ -1440,11 +1584,13 @@ export default function UnifiedMaintenance() {
         <DialogContent>
           <form onSubmit={handleLogMaintenance}>
             <DialogHeader>
-              <DialogTitle>Log Maintenance Work</DialogTitle>
+              <DialogTitle className="text-violet-900 dark:text-violet-100">
+                Log Maintenance Work
+              </DialogTitle>
             </DialogHeader>
             <div className="grid gap-4 py-4">
               <div className="grid gap-2">
-                <Label>
+                <Label className="text-violet-900 dark:text-violet-100">
                   System{" "}
                   {maintenanceForm.part_name && (
                     <span className="text-xs text-green-600">
@@ -1455,14 +1601,10 @@ export default function UnifiedMaintenance() {
                 <Select
                   value={maintenanceForm.system_id}
                   onValueChange={(v) =>
-                    setMaintenanceForm({
-                      ...maintenanceForm,
-                      system_id: v,
-                    })
+                    setMaintenanceForm({ ...maintenanceForm, system_id: v })
                   }
-                  disabled={maintenanceForm.part_name !== ""}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger className="border-violet-200 dark:border-violet-800 focus:ring-violet-500">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -1474,60 +1616,26 @@ export default function UnifiedMaintenance() {
                 </Select>
               </div>
               <div className="grid gap-2">
-                <Label>Part Name *</Label>
-                {rules.length > 0 ? (
-                  <Select
-                    value={maintenanceForm.part_name}
-                    onValueChange={(v) => {
-                      const selectedRule = rules.find((r) => r.part_name === v);
-                      setMaintenanceForm({
-                        ...maintenanceForm,
-                        part_name: v,
-                        system_id:
-                          selectedRule?.system_id || maintenanceForm.system_id,
-                        engine_hours_at_service: currentState?.engine_hours,
-                        trips_at_service: currentState?.total_trips,
-                      });
-                    }}
-                  >
-                    <SelectTrigger>
-                      <SelectValue placeholder="Select part from rules" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {rules
-                        .filter(
-                          (rule, index, self) =>
-                            index ===
-                            self.findIndex(
-                              (r) => r.part_name === rule.part_name
-                            )
-                        )
-                        .map((rule) => (
-                          <SelectItem key={rule.id} value={rule.part_name}>
-                            {rule.part_name} ({rule.system_id})
-                          </SelectItem>
-                        ))}
-                    </SelectContent>
-                  </Select>
-                ) : (
-                  <Input
-                    placeholder="No rules created yet"
-                    value={maintenanceForm.part_name}
-                    onChange={(e) =>
-                      setMaintenanceForm({
-                        ...maintenanceForm,
-                        part_name: e.target.value,
-                      })
-                    }
-                    required
-                  />
-                )}
-                <p className="text-xs text-muted-foreground">
-                  Selecting a part auto-fills the system
-                </p>
+                <Label className="text-violet-900 dark:text-violet-100">
+                  Part Name *
+                </Label>
+                <Input
+                  placeholder="e.g., Oil Filter"
+                  value={maintenanceForm.part_name}
+                  onChange={(e) =>
+                    setMaintenanceForm({
+                      ...maintenanceForm,
+                      part_name: e.target.value,
+                    })
+                  }
+                  required
+                  className="focus-visible:ring-violet-500 border-violet-200 dark:border-violet-800"
+                />
               </div>
               <div className="grid gap-2">
-                <Label>Date</Label>
+                <Label className="text-violet-900 dark:text-violet-100">
+                  Date Completed
+                </Label>
                 <Input
                   type="date"
                   value={maintenanceForm.done_at}
@@ -1537,12 +1645,16 @@ export default function UnifiedMaintenance() {
                       done_at: e.target.value,
                     })
                   }
+                  required
+                  className="focus-visible:ring-violet-500 border-violet-200 dark:border-violet-800"
                 />
               </div>
               <div className="grid gap-2">
-                <Label>Technician</Label>
+                <Label className="text-violet-900 dark:text-violet-100">
+                  Technician
+                </Label>
                 <Input
-                  placeholder="Your name"
+                  placeholder="Name or Company"
                   value={maintenanceForm.technician}
                   onChange={(e) =>
                     setMaintenanceForm({
@@ -1550,25 +1662,16 @@ export default function UnifiedMaintenance() {
                       technician: e.target.value,
                     })
                   }
+                  className="focus-visible:ring-violet-500 border-violet-200 dark:border-violet-800"
                 />
               </div>
               <div className="grid gap-2">
-                <Label>Notes</Label>
+                <Label className="text-violet-900 dark:text-violet-100">
+                  Cost (LKR)
+                </Label>
                 <Input
-                  placeholder="What was done"
-                  value={maintenanceForm.notes}
-                  onChange={(e) =>
-                    setMaintenanceForm({
-                      ...maintenanceForm,
-                      notes: e.target.value,
-                    })
-                  }
-                />
-              </div>
-              <div className="grid gap-2">
-                <Label>Cost (optional)</Label>
-                <Input
-                  placeholder="$150"
+                  type="number"
+                  placeholder="0.00"
                   value={maintenanceForm.cost}
                   onChange={(e) =>
                     setMaintenanceForm({
@@ -1576,6 +1679,23 @@ export default function UnifiedMaintenance() {
                       cost: e.target.value,
                     })
                   }
+                  className="focus-visible:ring-violet-500 border-violet-200 dark:border-violet-800"
+                />
+              </div>
+              <div className="grid gap-2">
+                <Label className="text-violet-900 dark:text-violet-100">
+                  Notes
+                </Label>
+                <Input
+                  placeholder="Details about the work..."
+                  value={maintenanceForm.notes}
+                  onChange={(e) =>
+                    setMaintenanceForm({
+                      ...maintenanceForm,
+                      notes: e.target.value,
+                    })
+                  }
+                  className="focus-visible:ring-violet-500 border-violet-200 dark:border-violet-800"
                 />
               </div>
             </div>
@@ -1587,8 +1707,11 @@ export default function UnifiedMaintenance() {
               >
                 Cancel
               </Button>
-              <Button type="submit" disabled={!maintenanceForm.part_name}>
-                Log Maintenance
+              <Button
+                type="submit"
+                className="bg-violet-600 hover:bg-violet-700 text-white"
+              >
+                Save Log
               </Button>
             </DialogFooter>
           </form>
