@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Sample Vessel Blueprint</title>
+    <style>
+      body {
+        margin: 0;
+        padding: 20px;
+        background: #1a1a2e;
+        font-family: "Courier New", monospace;
+      }
+      .blueprint {
+        width: 1200px;
+        height: 800px;
+        background: #0f3460;
+        border: 3px solid #16213e;
+        position: relative;
+        margin: 0 auto;
+        box-shadow: 0 0 50px rgba(0, 255, 255, 0.3);
+      }
+      .grid {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background-image: repeating-linear-gradient(
+            0deg,
+            rgba(255, 255, 255, 0.05) 0px,
+            transparent 1px,
+            transparent 40px,
+            rgba(255, 255, 255, 0.05) 41px
+          ),
+          repeating-linear-gradient(
+            90deg,
+            rgba(255, 255, 255, 0.05) 0px,
+            transparent 1px,
+            transparent 40px,
+            rgba(255, 255, 255, 0.05) 41px
+          );
+      }
+      .title {
+        position: absolute;
+        top: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        color: #00fff5;
+        font-size: 28px;
+        font-weight: bold;
+        text-shadow: 0 0 10px #00fff5;
+      }
+      .subtitle {
+        position: absolute;
+        top: 55px;
+        left: 50%;
+        transform: translateX(-50%);
+        color: #00fff5;
+        font-size: 16px;
+        text-shadow: 0 0 5px #00fff5;
+      }
+      .section {
+        position: absolute;
+        border: 2px solid #00fff5;
+        background: rgba(0, 255, 245, 0.05);
+        padding: 10px;
+        color: #00fff5;
+        box-shadow: 0 0 15px rgba(0, 255, 245, 0.3);
+      }
+      .section-title {
+        font-size: 18px;
+        font-weight: bold;
+        margin-bottom: 8px;
+        text-transform: uppercase;
+      }
+      .part {
+        font-size: 12px;
+        margin: 4px 0;
+        opacity: 0.9;
+      }
+      .part::before {
+        content: "▪ ";
+      }
+      .status-ok {
+        color: #00ff00;
+      }
+      .status-warn {
+        color: #ffff00;
+      }
+      .legend {
+        position: absolute;
+        bottom: 20px;
+        left: 20px;
+        color: #00fff5;
+        font-size: 12px;
+      }
+      .legend-item {
+        margin: 5px 0;
+      }
+      .dot {
+        display: inline-block;
+        width: 8px;
+        height: 8px;
+        border-radius: 50%;
+        margin-right: 8px;
+      }
+      .connection {
+        position: absolute;
+        height: 2px;
+        background: rgba(0, 255, 245, 0.3);
+      }
+    </style>
+  </head>
+  <body>
+    <div class="blueprint">
+      <div class="grid"></div>
+
+      <div class="title">FISHING VESSEL BLUEPRINT</div>
+      <div class="subtitle">IMUL-001 - Multi-Day Vessel</div>
+
+      <!-- Engine Section -->
+      <div
+        class="section"
+        style="left: 100px; top: 150px; width: 300px; height: 200px"
+      >
+        <div class="section-title">⚙️ Engine & Propulsion</div>
+        <div class="part">Main Engine - 450 HP</div>
+        <div class="part">Generator - 100 kW</div>
+        <div class="part">Fuel Tanks - 3,000 L</div>
+        <div class="part">Oil System</div>
+        <div class="part">Cooling System</div>
+        <div class="part status-ok">Status: Operational</div>
+      </div>
+
+      <!-- Nets Section -->
+      <div
+        class="section"
+        style="left: 450px; top: 150px; width: 280px; height: 200px"
+      >
+        <div class="section-title">🎣 Nets & Gear</div>
+        <div class="part">Net Winches (2x)</div>
+        <div class="part">Trawl Doors</div>
+        <div class="part">Rigging Equipment</div>
+        <div class="part">Net Storage</div>
+        <div class="part status-warn">Status: Due Soon</div>
+      </div>
+
+      <!-- Safety Section -->
+      <div
+        class="section"
+        style="left: 780px; top: 150px; width: 300px; height: 200px"
+      >
+        <div class="section-title">🛟 Safety Equipment</div>
+        <div class="part">Lifejackets (12)</div>
+        <div class="part">Fire Extinguishers (6)</div>
+        <div class="part">EPIRB Beacon</div>
+        <div class="part">First Aid Kit</div>
+        <div class="part">Flares</div>
+        <div class="part status-ok">Status: Operational</div>
+      </div>
+
+      <!-- Electronics Section -->
+      <div
+        class="section"
+        style="left: 100px; top: 400px; width: 300px; height: 180px"
+      >
+        <div class="section-title">📡 Electronics</div>
+        <div class="part">GPS Navigation</div>
+        <div class="part">VHF Radio</div>
+        <div class="part">Radar System</div>
+        <div class="part">Fish Finder</div>
+        <div class="part status-ok">Status: Operational</div>
+      </div>
+
+      <!-- Fish Storage Section -->
+      <div
+        class="section"
+        style="left: 450px; top: 400px; width: 280px; height: 180px"
+      >
+        <div class="section-title">🧊 Storage & Hold</div>
+        <div class="part">Fish Hold - 50 tons</div>
+        <div class="part">Ice Storage - 15 tons</div>
+        <div class="part">Refrigeration System</div>
+        <div class="part">Brine System</div>
+        <div class="part status-ok">Status: Operational</div>
+      </div>
+
+      <!-- Maintenance Info -->
+      <div
+        class="section"
+        style="left: 780px; top: 400px; width: 300px; height: 180px"
+      >
+        <div class="section-title">🔧 Maintenance</div>
+        <div class="part">Engine Hours: 2,340</div>
+        <div class="part">Total Trips: 47</div>
+        <div class="part">Last Service: Jan 15, 2025</div>
+        <div class="part">Next Service: Mar 15, 2025</div>
+        <div class="part">Overdue Items: 0</div>
+      </div>
+
+      <!-- Legend -->
+      <div class="legend">
+        <div class="legend-item">
+          <span class="dot status-ok" style="background: #00ff00"></span>
+          Operational - All systems normal
+        </div>
+        <div class="legend-item">
+          <span class="dot status-warn" style="background: #ffff00"></span>
+          Due Soon - Maintenance required
+        </div>
+        <div class="legend-item">
+          <span class="dot" style="background: #ff0000"></span>
+          Overdue - Immediate attention needed
+        </div>
+      </div>
+
+      <!-- Vessel Info -->
+      <div
+        style="
+          position: absolute;
+          bottom: 20px;
+          right: 20px;
+          color: #00fff5;
+          font-size: 11px;
+          text-align: right;
+        "
+      >
+        <div>Vessel Type: Multi-Day Fishing Vessel</div>
+        <div>Length: 24 meters</div>
+        <div>Year Built: 2018</div>
+        <div>Last Updated: Nov 30, 2025</div>
+      </div>
+    </div>
+
+    <div
+      style="
+        text-align: center;
+        margin-top: 30px;
+        color: #00fff5;
+        font-size: 14px;
+      "
+    >
+      <p><strong>Instructions:</strong></p>
+      <p>1. Right-click on the blueprint above</p>
+      <p>2. Select "Save Image As..." or take a screenshot</p>
+      <p>3. Save to: <code>public/blueprints/sample-vessel.png</code></p>
+      <p>4. Use path: <code>/blueprints/sample-vessel.png</code></p>
+    </div>
+
+    <script>
+      // Optional: Auto-screenshot functionality
+      console.log(
+        "Blueprint loaded! Right-click to save or press Ctrl+S to screenshot."
+      );
+    </script>
+  </body>
+</html>

@@ -1,0 +1,63 @@
+<svg width="800" height="600" viewBox="0 0 800 600" xmlns="http://www.w3.org/2000/svg">
+  <!-- Blueprint Background -->
+  <rect width="100%" height="100%" fill="#003366" />
+  
+  <!-- Grid -->
+  <defs>
+    <pattern id="grid" width="50" height="50" patternUnits="userSpaceOnUse">
+      <path d="M 50 0 L 0 0 0 50" fill="none" stroke="#ffffff" stroke-width="0.5" opacity="0.2"/>
+    </pattern>
+  </defs>
+  <rect width="100%" height="100%" fill="url(#grid)" />
+
+  <!-- Styles -->
+  <style>
+    .hull { fill: none; stroke: #ffffff; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+    .detail { fill: none; stroke: #ffffff; stroke-width: 1; opacity: 0.8; }
+    .hidden { fill: none; stroke: #ffffff; stroke-width: 1; stroke-dasharray: 5,5; opacity: 0.5; }
+    .text { fill: #ffffff; font-family: 'Courier New', monospace; font-size: 14px; font-weight: bold; }
+    .dim { stroke: #ffffff; stroke-width: 0.5; opacity: 0.6; marker-end: url(#arrow); marker-start: url(#arrow); }
+  </style>
+
+  <!-- Arrow Marker -->
+  <defs>
+    <marker id="arrow" markerWidth="10" markerHeight="10" refX="5" refY="5" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#ffffff" />
+    </marker>
+  </defs>
+
+  <!-- OFRP Drawing -->
+  <g transform="translate(150, 250) scale(0.7)">
+    <!-- Hull Profile -->
+    <path class="hull" d="M 0 100 Q 50 200 200 200 L 500 200 L 500 80 L 0 100 Z" />
+    
+    <!-- Gunwale -->
+    <path class="detail" d="M 10 105 Q 60 120 200 120 L 490 120" />
+
+    <!-- Center Console -->
+    <path class="hull" d="M 250 120 L 250 40 L 320 40 L 320 120" />
+    <circle cx="240" cy="60" r="15" class="detail" /> <!-- Wheel -->
+
+    <!-- Outboard Motor -->
+    <path class="hull" d="M 500 80 L 540 80 L 540 200 L 520 220 L 500 200 Z" />
+    <text x="550" y="100" class="text">40HP</text>
+
+    <!-- Fuel Tank -->
+    <rect x="400" y="140" width="60" height="30" class="hidden" />
+    <text x="400" y="130" class="text">FUEL</text>
+  </g>
+
+  <!-- Dimensions -->
+  <line x1="150" y1="400" x2="500" y2="400" class="dim" />
+  <text x="300" y="390" class="text">LOA: 7.00m</text>
+
+  <!-- Title Block -->
+  <g transform="translate(550, 480)">
+    <rect width="230" height="100" fill="none" stroke="#ffffff" stroke-width="2" />
+    <line x1="0" y1="30" x2="230" y2="30" stroke="#ffffff" />
+    <line x1="0" y1="60" x2="230" y2="60" stroke="#ffffff" />
+    <text x="10" y="20" class="text" font-size="18">VESSEL: OFRP-19</text>
+    <text x="10" y="50" class="text">TYPE: OPEN BOAT</text>
+    <text x="10" y="85" class="text">SCALE: 1:50</text>
+  </g>
+</svg>

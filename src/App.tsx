@@ -12,7 +12,10 @@ import Species from "./pages/Species";
 import Gear from "./pages/Gear";
 import Market from "./pages/Market";
 import TripPlanner from "./pages/TripPlanner";
+import UnifiedMaintenance from "./pages/UnifiedMaintenance";
 import NotFound from "./pages/NotFound";
+import AuthPage from "./pages/AuthPage";
+import ProfilePage from "./pages/ProfilePage";
 import { MapProvider } from "@/context/MapContext";
 
 const queryClient = new QueryClient();
@@ -27,15 +30,82 @@ const App = () => (
           <Routes>
             {/* Public Landing Page */}
             <Route path="/" element={<Landing />} />
+            <Route path="/login" element={<AuthPage />} />
+            <Route path="/signup" element={<AuthPage />} />
 
             {/* App Routes wrapped in Layout */}
-            <Route path="/home" element={<Layout><Home /></Layout>} />
-            <Route path="/dashboard" element={<Layout><Dashboard /></Layout>} />
-            <Route path="/hotspot-map" element={<Layout><HotspotMap /></Layout>} />
-            <Route path="/species" element={<Layout><Species /></Layout>} />
-            <Route path="/gear" element={<Layout><Gear /></Layout>} />
-            <Route path="/market" element={<Layout><Market /></Layout>} />
-            <Route path="/trip-planner" element={<Layout><TripPlanner /></Layout>} />
+            <Route
+              path="/home"
+              element={
+                <Layout>
+                  <Home />
+                </Layout>
+              }
+            />
+            <Route
+              path="/dashboard"
+              element={
+                <Layout>
+                  <Dashboard />
+                </Layout>
+              }
+            />
+            <Route
+              path="/hotspot-map"
+              element={
+                <Layout>
+                  <HotspotMap />
+                </Layout>
+              }
+            />
+            <Route
+              path="/species"
+              element={
+                <Layout>
+                  <Species />
+                </Layout>
+              }
+            />
+            <Route
+              path="/gear"
+              element={
+                <Layout>
+                  <Gear />
+                </Layout>
+              }
+            />
+            <Route
+              path="/market"
+              element={
+                <Layout>
+                  <Market />
+                </Layout>
+              }
+            />
+            <Route
+              path="/trip-planner"
+              element={
+                <Layout>
+                  <TripPlanner />
+                </Layout>
+              }
+            />
+            <Route
+              path="/maintenance"
+              element={
+                <Layout>
+                  <UnifiedMaintenance />
+                </Layout>
+              }
+            />
+            <Route
+              path="/profile"
+              element={
+                <Layout>
+                  <ProfilePage />
+                </Layout>
+              }
+            />
 
             <Route path="*" element={<NotFound />} />
           </Routes>
