@@ -7,6 +7,7 @@ import { useLocation, useNavigate, Link } from "react-router-dom";
 import { useSelector, useDispatch } from "react-redux";
 import { RootState } from "@/store";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
+import { cn } from "@/lib/utils";
 
 export function Layout({ children }: { children: ReactNode }) {
   const location = useLocation();
@@ -80,7 +81,7 @@ export function Layout({ children }: { children: ReactNode }) {
             
             <ThemeToggle />
           </header>
-          <main className="flex-1 p-6">
+          <main className={cn("flex-1", !isMaintenance && "p-6")}>
             {children}
           </main>
         </div>
