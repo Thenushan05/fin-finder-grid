@@ -498,7 +498,8 @@ export default function UnifiedMaintenance() {
     return { nodes, lines };
   }, []);
 
-  if (vesselsLoading || rulesLoading) {
+  // Only show full page loader on initial vessel load
+  if (vesselsLoading && vessels.length === 0) {
     return (
       <div className="flex items-center justify-center min-h-[600px] p-6">
         <div className="text-center">

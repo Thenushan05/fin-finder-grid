@@ -68,9 +68,9 @@ export default function Home() {
   };
 
   return (
-    <div className="relative min-h-screen w-full overflow-hidden space-y-8 p-1">
+    <div className="relative min-h-screen w-full overflow-hidden bg-slate-50/50 dark:bg-slate-950/50 transition-colors duration-300">
       {/* Chaotic Plexus / Constellation Pattern */}
-      <div className="absolute inset-0 z-0 opacity-40 dark:opacity-30 pointer-events-none">
+      <div className="absolute inset-0 z-0 opacity-30 dark:opacity-20 pointer-events-none">
         <svg className="w-full h-full" xmlns="http://www.w3.org/2000/svg">
           <defs>
             <pattern
@@ -89,8 +89,8 @@ export default function Home() {
                   x2={line.x2}
                   y2={line.y2}
                   stroke="currentColor"
-                  strokeWidth="2"
-                  className="text-slate-300 dark:text-blue-600"
+                  strokeWidth="1.5"
+                  className="text-slate-400 dark:text-blue-700"
                   style={{ opacity: line.opacity }}
                 />
               ))}
@@ -99,8 +99,8 @@ export default function Home() {
                   key={`node-${i}`}
                   cx={node.x}
                   cy={node.y}
-                  r={node.r}
-                  className="fill-slate-300 dark:fill-blue-500"
+                  r={node.r * 0.8}
+                  className="fill-slate-400 dark:fill-blue-600"
                 />
               ))}
             </pattern>
@@ -109,122 +109,124 @@ export default function Home() {
         </svg>
       </div>
 
-      {/* Hero Section */}
-      <motion.div 
-        initial="hidden"
-        animate="visible"
-        variants={fadeInUp}
-        className="relative overflow-hidden rounded-3xl shadow-2xl text-white min-h-[500px] flex items-center justify-center"
-      >
-        {/* Background Image with Overlay */}
-        <div
-          className="absolute inset-0 bg-cover bg-center z-0"
-          style={{
-            backgroundImage:
-              'url("https://images.unsplash.com/photo-1559827260-dc66d52bef19?q=80&w=2070&auto=format&fit=crop")',
-          }}
+      <div className="relative z-10 container mx-auto px-4 py-12 md:py-20 flex flex-col gap-16">
+        {/* Hero Section */}
+        {/* Hero Section */}
+        <motion.div 
+          initial="hidden"
+          animate="visible"
+          variants={fadeInUp}
+          className="relative overflow-hidden rounded-3xl shadow-2xl text-white min-h-[500px] flex items-center justify-center w-full"
         >
-          <div className="absolute inset-0 bg-slate-900/60 dark:bg-slate-950/70 backdrop-blur-[2px]" />
-        </div>
-
-        {/* Content */}
-        <div className="relative z-10 px-8 py-16 md:py-24 flex flex-col items-center text-center max-w-4xl mx-auto">
-          <motion.div 
-            initial={{ opacity: 0, y: -20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2 }}
-            className="inline-flex items-center gap-2 px-4 py-2 rounded-full bg-white/10 backdrop-blur-md border border-white/20 text-blue-100 text-sm font-medium mb-8"
+          {/* Background Image with Overlay */}
+          <div
+            className="absolute inset-0 bg-cover bg-center z-0"
+            style={{
+              backgroundImage:
+                'url("https://images.unsplash.com/photo-1559827260-dc66d52bef19?q=80&w=2070&auto=format&fit=crop")',
+            }}
           >
-            <Waves className="h-4 w-4" />
-            <span>Welcome to Ocelyn</span>
-          </motion.div>
-
-          <h1 className="text-5xl md:text-7xl font-bold tracking-tight mb-8 leading-tight">
-            Master the <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-cyan-300">Ocean</span>
-          </h1>
-
-          <p className="text-lg md:text-2xl text-blue-100/90 max-w-2xl mb-12 leading-relaxed">
-            Your all-in-one platform for fish spot prediction, market
-            intelligence, and voyage planning.
-          </p>
-
-          <div className="flex flex-wrap justify-center gap-6">
-            <Link to="/hotspot-map">
-              <Button
-                size="lg"
-                className="h-14 px-8 text-lg font-semibold rounded-xl bg-gradient-to-r from-blue-600 to-cyan-600 hover:from-blue-700 hover:to-cyan-700 text-white border-0 shadow-lg shadow-blue-500/30 transition-all hover:scale-105"
-              >
-                Explore Map <Map className="ml-2 h-5 w-5" />
-              </Button>
-            </Link>
-            <Link to="/dashboard">
-              <Button
-                size="lg"
-                variant="outline"
-                className="h-14 px-8 text-lg font-semibold rounded-xl bg-white/10 text-white backdrop-blur-md border-white/30 hover:bg-white/20 transition-all hover:scale-105"
-              >
-                View Dashboard
-              </Button>
-            </Link>
+            <div className="absolute inset-0 bg-slate-900/50 dark:bg-slate-950/60 backdrop-blur-[2px]" />
           </div>
-        </div>
-      </motion.div>
 
-      {/* Quick Access Grid */}
-      <motion.div 
-        initial="hidden"
-        animate="visible"
-        variants={staggerContainer}
-        className="grid md:grid-cols-3 gap-8"
-      >
-        <Link to="/hotspot-map" className="group">
-          <motion.div variants={fadeInUp} className="h-full">
-            <Card className="h-full border-white/20 bg-white/60 dark:bg-slate-900/60 backdrop-blur-xl hover:shadow-xl hover:shadow-violet-500/10 transition-all duration-300 hover:-translate-y-2 cursor-pointer">
-              <CardHeader>
-                <div className="h-14 w-14 rounded-2xl bg-violet-100 dark:bg-violet-900/30 flex items-center justify-center mb-4 text-violet-600 dark:text-violet-400 group-hover:scale-110 transition-transform duration-300 border border-violet-200/50 dark:border-violet-700/30">
-                  <Radar className="h-7 w-7" />
-                </div>
-                <CardTitle className="text-xl">Hotspot Map</CardTitle>
-                <CardDescription className="text-base">
-                  Find high-probability fishing zones with AI.
-                </CardDescription>
-              </CardHeader>
-            </Card>
-          </motion.div>
-        </Link>
+          <div className="relative z-10 flex flex-col items-center text-center max-w-4xl mx-auto px-4 py-16">
+            <motion.div 
+              initial={{ opacity: 0, y: -20 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.2 }}
+              className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-white/10 border border-white/20 text-white text-sm font-medium mb-8 backdrop-blur-md"
+            >
+              <Waves className="h-4 w-4" />
+              <span>Welcome to Ocelyn</span>
+            </motion.div>
 
-        <Link to="/market" className="group">
-          <motion.div variants={fadeInUp} className="h-full">
-            <Card className="h-full border-white/20 bg-white/60 dark:bg-slate-900/60 backdrop-blur-xl hover:shadow-xl hover:shadow-indigo-500/10 transition-all duration-300 hover:-translate-y-2 cursor-pointer">
-              <CardHeader>
-                <div className="h-14 w-14 rounded-2xl bg-indigo-100 dark:bg-indigo-900/30 flex items-center justify-center mb-4 text-indigo-600 dark:text-indigo-400 group-hover:scale-110 transition-transform duration-300 border border-indigo-200/50 dark:border-indigo-700/30">
-                  <ChartBar className="h-7 w-7" />
-                </div>
-                <CardTitle className="text-xl">Market Trends</CardTitle>
-                <CardDescription className="text-base">
-                  Track prices and maximize your profit.
-                </CardDescription>
-              </CardHeader>
-            </Card>
-          </motion.div>
-        </Link>
+            <h1 className="text-5xl md:text-7xl font-bold tracking-tight mb-6 leading-tight text-white">
+              Master the <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 to-cyan-300">Ocean</span>
+            </h1>
 
-        <Link to="/trip-planner" className="group">
-          <motion.div variants={fadeInUp} className="h-full">
-            <Card className="h-full border-white/20 bg-white/60 dark:bg-slate-900/60 backdrop-blur-xl hover:shadow-xl hover:shadow-blue-500/10 transition-all duration-300 hover:-translate-y-2 cursor-pointer">
-              <CardHeader>
-                <div className="h-14 w-14 rounded-2xl bg-blue-100 dark:bg-blue-900/30 flex items-center justify-center mb-4 text-blue-600 dark:text-blue-400 group-hover:scale-110 transition-transform duration-300 border border-blue-200/50 dark:border-blue-700/30">
-                  <Compass className="h-7 w-7" />
-                </div>
-                <CardTitle className="text-xl">Trip Planner</CardTitle>
-                <CardDescription className="text-base">
-                  Optimize routes and estimate fuel costs.
-                </CardDescription>
-              </CardHeader>
-            </Card>
-          </motion.div>
-        </Link>
-      </motion.div>
+            <p className="text-lg md:text-xl text-blue-50 max-w-2xl mb-10 leading-relaxed">
+              Your all-in-one platform for fish spot prediction, market
+              intelligence, and voyage planning.
+            </p>
+
+            <div className="flex flex-wrap justify-center gap-4">
+              <Link to="/hotspot-map">
+                <Button
+                  size="lg"
+                  className="h-12 px-8 text-base font-semibold rounded-full bg-blue-600 hover:bg-blue-700 text-white shadow-lg shadow-blue-500/20 transition-all hover:scale-105 border-none"
+                >
+                  Explore Map <Map className="ml-2 h-4 w-4" />
+                </Button>
+              </Link>
+              <Link to="/dashboard">
+                <Button
+                  size="lg"
+                  variant="outline"
+                  className="h-12 px-8 text-base font-semibold rounded-full bg-white/10 text-white border-white/30 hover:bg-white/20 transition-all hover:scale-105 backdrop-blur-sm"
+                >
+                  View Dashboard
+                </Button>
+              </Link>
+            </div>
+          </div>
+        </motion.div>
+
+        {/* Quick Access Grid */}
+        <motion.div 
+          initial="hidden"
+          animate="visible"
+          variants={staggerContainer}
+          className="grid md:grid-cols-3 gap-6"
+        >
+          <Link to="/hotspot-map" className="group">
+            <motion.div variants={fadeInUp} className="h-full">
+              <Card className="h-full border-slate-200/60 dark:border-slate-800/60 bg-white/40 dark:bg-slate-900/40 backdrop-blur-md hover:bg-white/60 dark:hover:bg-slate-900/60 transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-blue-500/5 group-hover:border-blue-200 dark:group-hover:border-blue-800/50">
+                <CardHeader>
+                  <div className="h-12 w-12 rounded-xl bg-blue-50 dark:bg-blue-900/20 flex items-center justify-center mb-4 text-blue-600 dark:text-blue-400 group-hover:scale-110 transition-transform duration-300">
+                    <Radar className="h-6 w-6" />
+                  </div>
+                  <CardTitle className="text-lg font-semibold text-slate-900 dark:text-slate-100">Hotspot Map</CardTitle>
+                  <CardDescription className="text-sm text-slate-500 dark:text-slate-400">
+                    Find high-probability fishing zones with AI.
+                  </CardDescription>
+                </CardHeader>
+              </Card>
+            </motion.div>
+          </Link>
+
+          <Link to="/market" className="group">
+            <motion.div variants={fadeInUp} className="h-full">
+              <Card className="h-full border-slate-200/60 dark:border-slate-800/60 bg-white/40 dark:bg-slate-900/40 backdrop-blur-md hover:bg-white/60 dark:hover:bg-slate-900/60 transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-indigo-500/5 group-hover:border-indigo-200 dark:group-hover:border-indigo-800/50">
+                <CardHeader>
+                  <div className="h-12 w-12 rounded-xl bg-indigo-50 dark:bg-indigo-900/20 flex items-center justify-center mb-4 text-indigo-600 dark:text-indigo-400 group-hover:scale-110 transition-transform duration-300">
+                    <ChartBar className="h-6 w-6" />
+                  </div>
+                  <CardTitle className="text-lg font-semibold text-slate-900 dark:text-slate-100">Market Trends</CardTitle>
+                  <CardDescription className="text-sm text-slate-500 dark:text-slate-400">
+                    Track prices and maximize your profit.
+                  </CardDescription>
+                </CardHeader>
+              </Card>
+            </motion.div>
+          </Link>
+
+          <Link to="/trip-planner" className="group">
+            <motion.div variants={fadeInUp} className="h-full">
+              <Card className="h-full border-slate-200/60 dark:border-slate-800/60 bg-white/40 dark:bg-slate-900/40 backdrop-blur-md hover:bg-white/60 dark:hover:bg-slate-900/60 transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-emerald-500/5 group-hover:border-emerald-200 dark:group-hover:border-emerald-800/50">
+                <CardHeader>
+                  <div className="h-12 w-12 rounded-xl bg-emerald-50 dark:bg-emerald-900/20 flex items-center justify-center mb-4 text-emerald-600 dark:text-emerald-400 group-hover:scale-110 transition-transform duration-300">
+                    <Compass className="h-6 w-6" />
+                  </div>
+                  <CardTitle className="text-lg font-semibold text-slate-900 dark:text-slate-100">Trip Planner</CardTitle>
+                  <CardDescription className="text-sm text-slate-500 dark:text-slate-400">
+                    Optimize routes and estimate fuel costs.
+                  </CardDescription>
+                </CardHeader>
+              </Card>
+            </motion.div>
+          </Link>
+        </motion.div>
+      </div>
     </div>
   );
 }

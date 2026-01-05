@@ -37,7 +37,6 @@ import { fetchOpenMeteo, type OpenMeteoResult } from "@/services/openMeteo";
 import {
   fetchMarineData,
   fetchSeaSurfaceTemperature,
-  fetchSeaLevelHeight,
   type MarineResult,
 } from "@/services/openMeteoMarine";
 import {
@@ -185,27 +184,14 @@ export default function HotspotMap() {
   );
   const [geolocationError, setGeolocationError] = useState<string | null>(null);
 
-  // Destination Environmental Data State
+  // Environmental data for manual destinations (user-clicked points)
+  // Note: Hotspots from backend already include SST/SSH/Chlorophyll in prediction response
+  // This data is only fetched when user manually selects a point on the map
   const [destinationSST, setDestinationSST] = useState<number | null>(null);
-  const [destinationSSTError, setDestinationSSTError] = useState<string | null>(
-    null
-  );
+  const [destinationSSTError, setDestinationSSTError] = useState<string | null>(null);
   const [destinationSSTLoading, setDestinationSSTLoading] = useState(false);
-
-  const [destinationSeaLevel, setDestinationSeaLevel] = useState<number | null>(
-    null
-  );
-  const [destinationSeaLevelError, setDestinationSeaLevelError] = useState<
-    string | null
-  >(null);
-  const [destinationSeaLevelLoading, setDestinationSeaLevelLoading] =
-    useState(false);
-
-  const [destinationMarine, setDestinationMarine] =
-    useState<MarineResult | null>(null);
-  const [destinationMarineError, setDestinationMarineError] = useState<
-    string | null
-  >(null);
+  const [destinationMarine, setDestinationMarine] = useState<MarineResult | null>(null);
+  const [destinationMarineError, setDestinationMarineError] = useState<string | null>(null);
 
   const [isMapLoaded, setIsMapLoaded] = useState(false);
 
@@ -270,86 +256,6 @@ export default function HotspotMap() {
     (selectedHotspot
       ? { lat: selectedHotspot.lat, lng: selectedHotspot.lng }
       : { lat: viewState.latitude, lng: viewState.longitude });
-
-  // Fetch environmental data for the destination
-  useEffect(() => {
-    let mounted = true;
-    const fetchDestData = async () => {
-      // Only fetch if we have a specific target (hotspot or manual point)
-      if (!manualDestination && !selectedHotspot) {
-        setDestinationSST(null);
-        setDestinationSeaLevel(null);
-        setDestinationMarine(null);
-        return;
-      }
-
-      setDestinationSSTLoading(true);
-      setDestinationSSTError(null);
-      setDestinationSeaLevelLoading(true);
-      setDestinationSeaLevelError(null);
-      setDestinationMarineError(null);
-
-      try {
-        const [sstRes, seaLevelRes, marine] = await Promise.all([
-          fetchSeaSurfaceTemperature(destination.lat, destination.lng),
-          fetchSeaLevelHeight(destination.lat, destination.lng),
-          fetchMarineData(destination.lat, destination.lng, {
-            hourly: [
-              "wave_height",
-              "wave_direction",
-              "ocean_current_velocity",
-              "ocean_current_direction",
-            ],
-            timezone: "UTC",
-          }),
-        ]);
-
-        if (mounted) {
-          // Extract current SST (closest to now)
-          const now = new Date();
-          const sstIdx = sstRes?.time
-            ? findNearestHourlyIndex(sstRes.time, now)
-            : 0;
-          const currentSST = sstRes?.sea_surface_temperature?.[sstIdx] ?? null;
-
-          // Extract current sea level height (closest to now)
-          const seaLevelIdx = seaLevelRes?.time
-            ? findNearestHourlyIndex(seaLevelRes.time, now)
-            : 0;
-          const currentSeaLevel =
-            seaLevelRes?.sea_level_height_msl?.[seaLevelIdx] ?? null;
-
-          setDestinationSST(currentSST);
-          setDestinationSeaLevel(currentSeaLevel);
-          setDestinationMarine(marine);
-        }
-      } catch (err) {
-        console.error("Failed to fetch destination data", err);
-        if (mounted) {
-          setDestinationSSTError("Failed to load data");
-          setDestinationSeaLevelError("Failed to load data");
-          setDestinationMarineError("Failed to load data");
-        }
-      } finally {
-        if (mounted) {
-          setDestinationSSTLoading(false);
-          setDestinationSeaLevelLoading(false);
-        }
-      }
-    };
-
-    fetchDestData();
-
-    return () => {
-      mounted = false;
-    };
-  }, [
-    destination.lat,
-    destination.lng,
-    manualDestination,
-    selectedHotspot,
-    // dependencies for fetch functions are stable imports
-  ]);
 
   // Manual retry for geolocation (useful if user previously denied permissions)
   const requestGeolocation = useCallback(() => {
@@ -1521,6 +1427,64 @@ export default function HotspotMap() {
       {/* Map Container - Full Width */}
       <Card className="border-border overflow-hidden">
         <CardContent className="p-0 h-[600px] relative">
+          {/* Risk Warning Overlay (Top Center) */}
+          {(() => {
+            // Find the currently selected route's stats
+            const currentRoute =
+              alternativeRoutes.length > 0
+                ? alternativeRoutes.find((r) => r.routeType === selectedRouteType)
+                : routeSummary
+                ? {
+                    counts: routeSummary.counts,
+                    hazardScore: 0, // Not needed for this check
+                  }
+                : null;
+
+            if (!currentRoute) return null;
+
+            const hasHighRisk =
+              currentRoute.counts.HIGH > 0 || currentRoute.counts.DANGER > 0;
+            const hasMediumRisk = currentRoute.counts.MEDIUM > 0;
+
+            if (hasHighRisk) {
+              return (
+                <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 animate-in slide-in-from-top-4 fade-in duration-300">
+                  <div className="flex items-center gap-3 bg-red-600 text-white px-6 py-3 rounded-full shadow-xl border-2 border-red-400 animate-pulse">
+                    <AlertTriangle className="h-6 w-6 fill-white text-red-600" />
+                    <div className="flex flex-col">
+                      <span className="font-black text-sm uppercase tracking-wider">
+                        Warning: High Risk Path
+                      </span>
+                      <span className="text-xs font-medium opacity-90">
+                        Experienced sailors only. Proceed with extreme caution.
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              );
+            }
+
+            if (hasMediumRisk) {
+              return (
+                <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 animate-in slide-in-from-top-4 fade-in duration-300">
+                  <div className="flex items-center gap-3 bg-orange-500 text-white px-6 py-3 rounded-full shadow-xl border-2 border-orange-300">
+                    <AlertTriangle className="h-6 w-6 fill-white text-orange-500" />
+                    <div className="flex flex-col">
+                      <span className="font-black text-sm uppercase tracking-wider">
+                        Warning: Medium Risk Path
+                      </span>
+                      <span className="text-xs font-medium opacity-90">
+                        Moderate conditions. Experienced sailors only.
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              );
+            }
+
+            return null;
+          })()}
+
           {/* Route Status Legend (overlaid on map) */}
           {alternativeRoutes.length > 1 && (
             <div className="absolute top-4 left-4 z-10 bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm rounded-lg shadow-lg border-2 border-slate-200 dark:border-slate-700 p-4 max-w-sm">

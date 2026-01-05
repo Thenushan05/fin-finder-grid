@@ -2,7 +2,7 @@ import { ReactNode } from "react";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
 import { ThemeToggle } from "@/components/ThemeToggle";
-import { Waves, Fish, Map, User, LayoutDashboard, Wrench } from "lucide-react";
+import { Waves, Fish, Map, User, LayoutDashboard, Wrench, TrendingUp } from "lucide-react";
 import { useLocation, useNavigate, Link } from "react-router-dom";
 import { useSelector, useDispatch } from "react-redux";
 import { RootState } from "@/store";
@@ -19,13 +19,14 @@ export function Layout({ children }: { children: ReactNode }) {
   const isSpecies = location.pathname === "/species";
   const isDashboard = location.pathname === "/dashboard";
   const isMaintenance = location.pathname === "/maintenance";
+  const isMarket = location.pathname === "/market";
 
   return (
     <SidebarProvider>
       <div className="flex min-h-screen w-full bg-background">
         <AppSidebar />
         <div className="flex-1 flex flex-col">
-          <header className="h-16 border-b border-border bg-card flex items-center px-6 gap-4 sticky top-0 z-10">
+          <header className="h-16 border-b border-border bg-card flex items-center px-6 gap-4 sticky top-0 z-50">
             <SidebarTrigger className="text-foreground" />
             <div className="flex items-center gap-2 flex-1">
               {isHotspotMap ? (
@@ -36,12 +37,14 @@ export function Layout({ children }: { children: ReactNode }) {
                 <LayoutDashboard className="h-6 w-6 text-primary" />
               ) : isMaintenance ? (
                 <Wrench className="h-6 w-6 text-violet-600 dark:text-violet-400" />
+              ) : isMarket ? (
+                <TrendingUp className="h-6 w-6 text-primary" />
               ) : (
                 <Waves className="h-6 w-6 text-primary" />
               )}
               <div>
                 <h1 className="text-xl font-semibold text-foreground">
-                  {isHotspotMap ? "Fish Hotspot Map" : isSpecies ? "Species & Spawning Intelligence" : isDashboard ? "Dashboard Overview" : isMaintenance ? "Vessel Maintenance" : "Fish Spot Intelligence"}
+                  {isHotspotMap ? "Fish Hotspot Map" : isSpecies ? "Species & Spawning Intelligence" : isDashboard ? "Dashboard Overview" : isMaintenance ? "Vessel Maintenance" : isMarket ? "Market Overview" : "Fish Spot Intelligence"}
                 </h1>
                 {isHotspotMap && (
                   <p className="text-xs text-muted-foreground hidden sm:block">
@@ -61,6 +64,11 @@ export function Layout({ children }: { children: ReactNode }) {
                 {isMaintenance && (
                   <p className="text-xs text-muted-foreground hidden sm:block">
                     Manage vessels, track maintenance, and monitor status
+                  </p>
+                )}
+                {isMarket && (
+                  <p className="text-xs text-muted-foreground hidden sm:block">
+                    Real-time global fisheries intelligence
                   </p>
                 )}
               </div>

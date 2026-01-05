@@ -324,6 +324,20 @@ export default function TripPlanner() {
                       CAUTION: Trip cuts into 20% safety reserve.
                     </div>
                   )}
+                  
+                  {/* Sea Condition Risk Warnings */}
+                  {seaCondition === "rough" && (
+                    <div className="flex items-center gap-2 text-red-600 text-xs font-bold bg-red-50 dark:bg-red-900/20 p-2 rounded border border-red-100 dark:border-red-800 animate-pulse">
+                      <AlertTriangle className="h-4 w-4" />
+                      WARNING: High Risk Conditions. Navigation not recommended.
+                    </div>
+                  )}
+                  {seaCondition === "choppy" && (
+                    <div className="flex items-center gap-2 text-orange-600 text-xs font-bold bg-orange-50 dark:bg-orange-900/20 p-2 rounded border border-orange-100 dark:border-orange-800">
+                      <AlertTriangle className="h-4 w-4" />
+                      WARNING: Medium Risk. Experienced sailors only.
+                    </div>
+                  )}
                 </div>
               </div>
             </CardContent>
