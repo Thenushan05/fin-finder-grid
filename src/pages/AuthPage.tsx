@@ -193,7 +193,7 @@ export default function AuthPage() {
                   y2={line.y2}
                   stroke="currentColor"
                   strokeWidth="2"
-                  className="text-violet-500 dark:text-blue-600"
+                  className="text-slate-300 dark:text-blue-600"
                   style={{ opacity: line.opacity }}
                 />
               ))}
@@ -205,7 +205,7 @@ export default function AuthPage() {
                   cx={node.x}
                   cy={node.y}
                   r={node.r}
-                  className="fill-violet-500 dark:fill-blue-500"
+                  className="fill-slate-300 dark:fill-blue-500"
                 />
               ))}
             </pattern>
@@ -215,9 +215,9 @@ export default function AuthPage() {
       </div>
 
       {/* Gradient Blobs for Glassmorphism Contrast */}
-      <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-purple-300/30 dark:bg-blue-600/20 rounded-full blur-3xl animate-pulse z-0 pointer-events-none" />
+      <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-purple-300/30 dark:hidden rounded-full blur-3xl animate-pulse z-0 pointer-events-none" />
       <div
-        className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-indigo-300/30 dark:bg-violet-600/20 rounded-full blur-3xl animate-pulse z-0 pointer-events-none"
+        className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-indigo-300/30 dark:hidden rounded-full blur-3xl animate-pulse z-0 pointer-events-none"
         style={{ animationDelay: "1s" }}
       />
 
