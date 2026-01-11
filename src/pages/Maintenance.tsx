@@ -50,6 +50,7 @@ import {
 } from "@/store/maintenanceSlice";
 import { useToast } from "@/hooks/use-toast";
 import { ManualVesselCreator } from "@/components/ManualVesselCreator";
+import AddVesselDialog from "@/components/AddVesselDialog";
 
 // --- Types & Interfaces ---
 
@@ -658,6 +659,24 @@ export default function Maintenance() {
     initializeData();
   }, []);
 
+  // Reload vessels function for AddVesselDialog
+  const reloadVessels = async () => {
+    try {
+      await dispatch(fetchVessels()).unwrap();
+      toast({
+        title: "Vessels Reloaded",
+        description: "Vessel list has been updated.",
+        variant: "default",
+      });
+    } catch (err: any) {
+      toast({
+        title: "Error Reloading Vessels",
+        description: err || "Failed to reload vessel data",
+        variant: "destructive",
+      });
+    }
+  };
+
   // Get active vessel from Redux or fallback to local data
   const activeVessel =
     vessels.find((v) => v.id === selectedVesselId) ||
@@ -866,7 +885,13 @@ export default function Maintenance() {
                   </CardContent>
                 </ScrollArea>
                 {/* Vessel Selector at bottom of sidebar */}
-                <div className="p-2 border-t bg-muted/10 shrink-0">
+                <div className="p-2 border-t bg-muted/10 shrink-0 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-medium text-muted-foreground">
+                      Vessels
+                    </span>
+                    <AddVesselDialog onVesselAdded={reloadVessels} />
+                  </div>
                   <Select
                     value={selectedVesselId || undefined}
                     onValueChange={(v) => {
