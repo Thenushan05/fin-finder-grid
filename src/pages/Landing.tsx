@@ -8,6 +8,8 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import dataDrivenImage from "@/assets/images/data-driven-fishing.png";
 import dataDrivenImageLight from "@/assets/images/data-driven-fishing-light.png";
+import logo from "@/assets/images/logo.svg";
+import logodark from "@/assets/images/logodark.svg";
 
 export default function Landing() {
     // Generate chaotic plexus pattern (reused from AuthPage for consistency)
@@ -88,7 +90,7 @@ export default function Landing() {
                                     y2={line.y2}
                                     stroke="currentColor"
                                     strokeWidth="2"
-                                    className="text-violet-500 dark:text-blue-600"
+                                    className="text-slate-300 dark:text-blue-600"
                                     style={{ opacity: line.opacity }}
                                 />
                             ))}
@@ -98,7 +100,7 @@ export default function Landing() {
                                     cx={node.x}
                                     cy={node.y}
                                     r={node.r}
-                                    className="fill-violet-500 dark:fill-blue-500"
+                                    className="fill-slate-300 dark:fill-blue-500"
                                 />
                             ))}
                         </pattern>
@@ -108,9 +110,9 @@ export default function Landing() {
             </div>
 
             {/* Gradient Blobs */}
-            <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-purple-300/30 dark:bg-blue-600/20 rounded-full blur-3xl animate-pulse z-0 pointer-events-none" />
+            <div className="absolute top-1/4 left-1/4 w-96 h-96 bg-purple-300/30 dark:hidden rounded-full blur-3xl animate-pulse z-0 pointer-events-none" />
             <div
-                className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-indigo-300/30 dark:bg-violet-600/20 rounded-full blur-3xl animate-pulse z-0 pointer-events-none"
+                className="absolute bottom-1/4 right-1/4 w-96 h-96 bg-indigo-300/30 dark:hidden rounded-full blur-3xl animate-pulse z-0 pointer-events-none"
                 style={{ animationDelay: "1s" }}
             />
 
@@ -118,8 +120,9 @@ export default function Landing() {
             <nav className="border-b border-white/10 fixed top-0 w-full z-50 bg-white/10 dark:bg-slate-900/50 backdrop-blur-md">
                 <div className="container mx-auto px-6 h-16 flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                        <Waves className="h-6 w-6 text-violet-600 dark:text-violet-400" />
-                        <span className="text-xl font-bold bg-gradient-to-r from-violet-600 to-indigo-600 bg-clip-text text-transparent">FinFinder</span>
+                        <img src={logo} alt="Ocelyn Logo" className="h-8 w-8 dark:hidden" />
+                        <img src={logodark} alt="Ocelyn Logo" className="h-8 w-8 hidden dark:block" />
+                        <span className="text-xl font-bold bg-gradient-to-r from-violet-600 to-indigo-600 bg-clip-text text-transparent">Ocelyn</span>
                     </div>
 
                     <div className="flex items-center gap-4 md:gap-8">
@@ -302,7 +305,7 @@ export default function Landing() {
                                 Revolutionizing Sustainable <span className="bg-gradient-to-r from-violet-600 to-indigo-600 bg-clip-text text-transparent">Fisheries</span>
                             </h2>
                             <p className="text-lg text-slate-600 dark:text-slate-300 mb-6 leading-relaxed">
-                                At FinFinder, we combine cutting-edge satellite technology with advanced machine learning to provide fishermen with the most accurate oceanographic data available. Our mission is to make fishing more efficient, profitable, and sustainable.
+                                At Ocelyn, we combine cutting-edge satellite technology with advanced machine learning to provide fishermen with the most accurate oceanographic data available. Our mission is to make fishing more efficient, profitable, and sustainable.
                             </p>
                             <div className="grid grid-cols-2 gap-6 mt-8">
                                 <div className="p-4 rounded-xl bg-white/30 dark:bg-slate-800/30 border border-white/40 dark:border-slate-700/50 backdrop-blur-sm">
@@ -367,8 +370,8 @@ export default function Landing() {
                                 </div>
                                 <div>
                                     <h3 className="text-lg font-semibold text-slate-900 dark:text-white mb-1">Email Us</h3>
-                                    <p className="text-slate-600 dark:text-slate-300">support@finfinder.com</p>
-                                    <p className="text-slate-600 dark:text-slate-300">sales@finfinder.com</p>
+                                    <p className="text-slate-600 dark:text-slate-300">support@ocelyn.com</p>
+                                    <p className="text-slate-600 dark:text-slate-300">sales@ocelyn.com</p>
                                 </div>
                             </motion.div>
 
@@ -433,7 +436,7 @@ export default function Landing() {
             {/* Footer */}
             <footer className="py-8 border-t border-white/10 bg-white/5 dark:bg-slate-900/50 backdrop-blur-md relative z-10">
                 <div className="container px-6 text-center text-slate-500 dark:text-slate-400 text-sm">
-                    <p>&copy; 2024 FinFinder. All rights reserved.</p>
+                    <p>&copy; 2024 Ocelyn. All rights reserved.</p>
                 </div>
             </footer>
         </div>

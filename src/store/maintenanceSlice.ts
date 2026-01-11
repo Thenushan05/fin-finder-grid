@@ -1,25 +1,16 @@
 import { createSlice, createAsyncThunk, PayloadAction } from "@reduxjs/toolkit";
-import axios from "axios";
-import tokenService from "@/services/tokenService";
-
-const BASE = (import.meta as any).env?.VITE_API_BASE || "http://localhost:8000";
-
-const api = axios.create({
-  baseURL: BASE,
-  timeout: 30_000,
-  withCredentials: true,
-});
-
-// Attach token from localStorage
-api.interceptors.request.use((cfg) => {
-  try {
-    const token = tokenService.getToken();
-    if (token && cfg.headers) cfg.headers["Authorization"] = `Bearer ${token}`;
-  } catch (e) {
-    // ignore
-  }
-  return cfg;
-});
+import {
+  getVessels,
+  getVessel,
+  createVessel as createVesselAPI,
+  updateVessel as updateVesselAPI,
+  deleteVessel as deleteVesselAPI,
+  updateSystemStatus as updateSystemStatusAPI,
+  createMaintenanceTask as createMaintenanceTaskAPI,
+  updateMaintenanceTask as updateMaintenanceTaskAPI,
+  deleteMaintenanceTask as deleteMaintenanceTaskAPI,
+  createServiceLog as createServiceLogAPI,
+} from "@/services/api";
 
 // Types
 export interface MaintenanceTask {
@@ -97,15 +88,11 @@ export const fetchVessels = createAsyncThunk(
   "maintenance/fetchVessels",
   async (_, { rejectWithValue }) => {
     try {
-      const response = await api.get("/api/v1/maintenance/vessels");
-      return response.data.vessels;
+      const vessels = await getVessels();
+      return vessels;
     } catch (error: any) {
       console.error("fetchVessels error:", error);
-      const errorMsg =
-        error.response?.data?.error ||
-        error.response?.data?.detail ||
-        error.message ||
-        "Failed to fetch vessels";
+      const errorMsg = error.message || "Failed to fetch vessels";
       return rejectWithValue(errorMsg);
     }
   }
@@ -115,12 +102,10 @@ export const fetchVessel = createAsyncThunk(
   "maintenance/fetchVessel",
   async (vesselId: string, { rejectWithValue }) => {
     try {
-      const response = await api.get(`/api/v1/maintenance/vessels/${vesselId}`);
-      return response.data;
+      const vessel = await getVessel(vesselId);
+      return vessel;
     } catch (error: any) {
-      return rejectWithValue(
-        error.response?.data?.error || "Failed to fetch vessel"
-      );
+      return rejectWithValue(error.message || "Failed to fetch vessel");
     }
   }
 );
@@ -129,12 +114,10 @@ export const createVessel = createAsyncThunk(
   "maintenance/createVessel",
   async (vessel: Omit<Vessel, "id">, { rejectWithValue }) => {
     try {
-      const response = await api.post("/api/v1/maintenance/vessels", vessel);
-      return response.data;
+      const newVessel = await createVesselAPI(vessel);
+      return newVessel;
     } catch (error: any) {
-      return rejectWithValue(
-        error.response?.data?.error || "Failed to create vessel"
-      );
+      return rejectWithValue(error.message || "Failed to create vessel");
     }
   }
 );
@@ -146,8 +129,8 @@ export const updateVessel = createAsyncThunk(
     { rejectWithValue }
   ) => {
     try {
-      await api.put(`/api/v1/maintenance/vessels/${vesselId}`, vessel);
-      return vessel;
+      const updatedVessel = await updateVesselAPI(vesselId, vessel);
+      return updatedVessel;
     } catch (error: any) {
       return rejectWithValue(
         error.response?.data?.error || "Failed to update vessel"
@@ -160,12 +143,10 @@ export const deleteVessel = createAsyncThunk(
   "maintenance/deleteVessel",
   async (vesselId: string, { rejectWithValue }) => {
     try {
-      await api.delete(`/api/v1/maintenance/vessels/${vesselId}`);
+      await deleteVesselAPI(vesselId);
       return vesselId;
     } catch (error: any) {
-      return rejectWithValue(
-        error.response?.data?.error || "Failed to delete vessel"
-      );
+      return rejectWithValue(error.message || "Failed to delete vessel");
     }
   }
 );
@@ -181,17 +162,10 @@ export const updateSystemStatus = createAsyncThunk(
     { rejectWithValue }
   ) => {
     try {
-      await api.patch(
-        `/api/v1/maintenance/vessels/${vesselId}/systems/${systemId}/status`,
-        {
-          status,
-        }
-      );
+      await updateSystemStatusAPI(vesselId, systemId, status);
       return { vesselId, systemId, status };
     } catch (error: any) {
-      return rejectWithValue(
-        error.response?.data?.error || "Failed to update system status"
-      );
+      return rejectWithValue(error.message || "Failed to update system status");
     }
   }
 );
@@ -215,22 +189,22 @@ export const createTask = createAsyncThunk(
     { rejectWithValue }
   ) => {
     try {
-      const response = await api.post(
-        `/api/v1/maintenance/vessels/${vesselId}/systems/${systemId}/tasks`,
-        { systemId, task, due, priority }
-      );
+      const response = await createMaintenanceTaskAPI(vesselId, systemId, {
+        systemId,
+        task,
+        due,
+        priority,
+      });
       return {
         vesselId,
         systemId,
-        taskId: response.data.id,
+        taskId: response.id,
         task,
         due,
         priority,
       };
     } catch (error: any) {
-      return rejectWithValue(
-        error.response?.data?.error || "Failed to create task"
-      );
+      return rejectWithValue(error.message || "Failed to create task");
     }
   }
 );
@@ -252,15 +226,10 @@ export const updateTask = createAsyncThunk(
     { rejectWithValue }
   ) => {
     try {
-      await api.patch(
-        `/api/v1/maintenance/vessels/${vesselId}/systems/${systemId}/tasks/${taskId}`,
-        updates
-      );
+      await updateMaintenanceTaskAPI(vesselId, systemId, taskId, updates);
       return { vesselId, systemId, taskId, updates };
     } catch (error: any) {
-      return rejectWithValue(
-        error.response?.data?.error || "Failed to update task"
-      );
+      return rejectWithValue(error.message || "Failed to update task");
     }
   }
 );
@@ -276,14 +245,10 @@ export const deleteTask = createAsyncThunk(
     { rejectWithValue }
   ) => {
     try {
-      await api.delete(
-        `/api/v1/maintenance/vessels/${vesselId}/systems/${systemId}/tasks/${taskId}`
-      );
+      await deleteMaintenanceTaskAPI(vesselId, systemId, taskId);
       return { vesselId, systemId, taskId };
     } catch (error: any) {
-      return rejectWithValue(
-        error.response?.data?.error || "Failed to delete task"
-      );
+      return rejectWithValue(error.message || "Failed to delete task");
     }
   }
 );
@@ -309,19 +274,20 @@ export const createServiceLog = createAsyncThunk(
     { rejectWithValue }
   ) => {
     try {
-      await api.post(
-        `/api/v1/maintenance/vessels/${vesselId}/systems/${systemId}/service-logs`,
-        { systemId, date, technician, notes, cost }
-      );
+      await createServiceLogAPI(vesselId, systemId, {
+        systemId,
+        date,
+        technician,
+        notes,
+        cost,
+      });
       return {
         vesselId,
         systemId,
         serviceLog: { date, technician, notes, cost },
       };
     } catch (error: any) {
-      return rejectWithValue(
-        error.response?.data?.error || "Failed to create service log"
-      );
+      return rejectWithValue(error.message || "Failed to create service log");
     }
   }
 );

@@ -1,8 +1,8 @@
 import axios from "axios";
 import tokenService from "./tokenService";
 
-// Base URL: use Vite env if provided, otherwise default to localhost:8000
-const BASE = (import.meta as any).env?.VITE_API_BASE || "http://localhost:8000";
+// Base URL: use Vite env if provided, otherwise default to localhost:8001
+const BASE = (import.meta as any).env?.VITE_API_BASE || "http://localhost:8001";
 
 const api = axios.create({
   baseURL: BASE,
@@ -214,6 +214,79 @@ export async function getHotspotsToday(
 export async function getDepth(lat: number, lon: number) {
   const res = await api.get("/api/depth", { params: { lat, lon } });
   return res.data;
+}
+
+// --- Fuel Consumption API helpers ---
+export async function calculateFuelConsumption({
+  start_lat,
+  start_lon,
+  end_lat,
+  end_lon,
+  vessel_id,
+}: {
+  start_lat: number;
+  start_lon: number;
+  end_lat: number;
+  end_lon: number;
+  vessel_id?: string;
+}) {
+  const res = await api.post("/api/v1/fuel/calculate-fuel-consumption", {
+    start_lat,
+    start_lon,
+    end_lat,
+    end_lon,
+    vessel_id,
+  });
+  return res.data;
+}
+
+export async function getFuelVessels() {
+  const res = await api.get("/api/v1/fuel/vessels");
+  return res.data;
+}
+
+export async function calculateMultipleStopsFuel({
+  coordinates,
+  vessel_id,
+}: {
+  coordinates: Array<{ lat: number; lng: number }>;
+  vessel_id?: string;
+}) {
+  // Calculate fuel consumption for a multi-stop trip
+  const calculations = [];
+  let totalDistance = 0;
+  let totalFuel = 0;
+  let totalCost = 0;
+  let totalDuration = 0;
+
+  for (let i = 0; i < coordinates.length - 1; i++) {
+    const start = coordinates[i];
+    const end = coordinates[i + 1];
+
+    const result = await calculateFuelConsumption({
+      start_lat: start.lat,
+      start_lon: start.lng,
+      end_lat: end.lat,
+      end_lon: end.lng,
+      vessel_id,
+    });
+
+    calculations.push(result);
+    totalDistance += result.distance_km;
+    totalFuel += result.fuel_consumption_liters;
+    totalCost += result.fuel_cost_usd;
+    totalDuration += result.estimated_trip_duration_hours;
+  }
+
+  return {
+    segments: calculations,
+    totals: {
+      distance_km: totalDistance,
+      fuel_consumption_liters: totalFuel,
+      fuel_cost_usd: totalCost,
+      estimated_trip_duration_hours: totalDuration,
+    },
+  };
 }
 
 export default api;
