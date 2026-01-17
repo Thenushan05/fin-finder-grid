@@ -237,3 +237,160 @@ export const mockWeatherHazards: WeatherHazard[] = [
     windSpeed: 45,
   },
 ];
+
+// --- New ML Model & Market Prediction Mock Data ---
+
+// 1. Confusion Matrix Data
+export const mockConfusionMatrix = {
+  labels: ["Up", "Stable", "Down"],
+  matrix: [
+    [45, 5, 2],  // True Up
+    [8, 52, 6],  // True Stable
+    [3, 7, 48],  // True Down
+  ]
+};
+
+// 2. Accuracy Over Time
+export const mockAccuracyOverTime = [
+  { date: "2023-08", accuracy: 0.78 },
+  { date: "2023-09", accuracy: 0.81 },
+  { date: "2023-10", accuracy: 0.79 },
+  { date: "2023-11", accuracy: 0.84 },
+  { date: "2023-12", accuracy: 0.88 },
+  { date: "2024-01", accuracy: 0.86 },
+];
+
+// 3. Festival vs Normal Accuracy
+export const mockFestivalAccuracy = [
+  { type: "Normal Days", accuracy: 82 },
+  { type: "Festival Days", accuracy: 76 }, // Often harder to predict
+];
+
+// 4. Monthly Accuracy (Bar Chart)
+export const mockMonthlyAccuracy = [
+  { month: "Jan", accuracy: 85 },
+  { month: "Feb", accuracy: 82 },
+  { month: "Mar", accuracy: 88 },
+  { month: "Apr", accuracy: 79 },
+  { month: "May", accuracy: 81 },
+  { month: "Jun", accuracy: 84 },
+];
+
+// 5. Feature Importance
+export const mockFeatureImportance = [
+  { feature: "Prev Week Price", importance: 0.35 },
+  { feature: "Seasonality", importance: 0.25 },
+  { feature: "Fuel Cost", importance: 0.15 },
+  { feature: "Festival", importance: 0.12 },
+  { feature: "Weather", importance: 0.08 },
+  { feature: "Export Demand", importance: 0.05 },
+];
+
+// 6. Market Trend & Timeline
+export const mockMarketPredictions = [
+  {
+    day: "Mon",
+    price: 1250,
+    trend: "up",
+    confidence: 0.89,
+    event: "Start of Week",
+    explanation: "High export demand detected."
+  },
+  {
+    day: "Tue",
+    price: 1280,
+    trend: "up",
+    confidence: 0.85,
+    event: null,
+    explanation: "Supply constraints from poor weather."
+  },
+  {
+    day: "Wed",
+    price: 1260,
+    trend: "down",
+    confidence: 0.65,
+    event: "Mid-week lull",
+    explanation: "Local market saturation expected."
+  },
+  {
+    day: "Thu",
+    price: 1290,
+    trend: "up",
+    confidence: 0.92,
+    event: "Pre-Festival Rush",
+    explanation: "Upcoming festival weekend driving prices."
+  },
+  {
+    day: "Fri",
+    price: 1350,
+    trend: "up",
+    confidence: 0.95,
+    event: "Festival Peak",
+    explanation: "Peak festival demand."
+  },
+  {
+    day: "Sat",
+    price: 1320,
+    trend: "stable",
+    confidence: 0.78,
+    event: null,
+    explanation: "Market stabilizing after peak."
+  },
+  {
+    day: "Sun",
+    price: 1300,
+    trend: "down",
+    confidence: 0.81,
+    event: "Close",
+    explanation: "End of weekly cycle."
+  },
+];
+
+export const mockFestivalAlerts = [
+  { id: 1, name: "Sinhala New Year", date: "2024-04-14", impact: "High", type: "upcoming" },
+  { id: 2, name: "Vesak", date: "2024-05-23", impact: "Medium", type: "upcoming" },
+  { id: 3, name: "Christmas", date: "2023-12-25", impact: "High", type: "past" },
+];
+
+// 7. Multi-Week Trend Outlook
+export const mockMultiWeekTrend = [
+  { week: "W1", trend: "Up", confidence: 0.85, intensity: 80 },
+  { week: "W2", trend: "Up", confidence: 0.72, intensity: 60 },
+  { week: "W3", trend: "Stable", confidence: 0.65, intensity: 10 },
+  { week: "W4", trend: "Down", confidence: 0.78, intensity: -40 },
+];
+
+// 8. Trend Distribution (Pie Chart)
+export const mockTrendDistribution = [
+  { name: "Up Trend", value: 45, color: "#10b981" },    // Green
+  { name: "Stable", value: 25, color: "#94a3b8" },      // Slate
+  { name: "Down Trend", value: 30, color: "#ef4444" },  // Red
+];
+
+// 9. Seasonal Trend Analysis (Radar or Line)
+export const mockSeasonalTrends = [
+  { subject: "Monsoon", A: 85, fullMark: 100 },
+  { subject: "Inter-Monsoon", A: 45, fullMark: 100 },
+  { subject: "Drought", A: 30, fullMark: 100 },
+  { subject: "Festival", A: 90, fullMark: 100 },
+  { subject: "Holiday", A: 60, fullMark: 100 },
+];
+
+// 10. Fish-Wise Trend Summary
+export const mockFishTrendSummary = [
+  { code: "YFT", name: "Yellowfin Tuna", trend: "Up", confidence: 0.92, recommendedAction: "Buy" },
+  { code: "BET", name: "Bigeye Tuna", trend: "Stable", confidence: 0.81, recommendedAction: "Hold" },
+  { code: "SKJ", name: "Skipjack Tuna", trend: "Down", confidence: 0.76, recommendedAction: "Wait" },
+  { code: "COM", name: "Seer Fish", trend: "Up", confidence: 0.88, recommendedAction: "Buy" },
+];
+
+// 11. Next Week Forecast (Multi-Species Line Chart)
+export const mockSpeciesForecast = [
+  { day: "Mon", YFT: 100, BET: 100, SKJ: 100, COM: 100 }, // Baseline start
+  { day: "Tue", YFT: 102, BET: 98, SKJ: 101, COM: 105 },
+  { day: "Wed", YFT: 105, BET: 96, SKJ: 99, COM: 108 },
+  { day: "Thu", YFT: 104, BET: 97, SKJ: 95, COM: 112 },
+  { day: "Fri", YFT: 108, BET: 95, SKJ: 92, COM: 115 },
+  { day: "Sat", YFT: 110, BET: 94, SKJ: 90, COM: 114 },
+  { day: "Sun", YFT: 112, BET: 95, SKJ: 88, COM: 110 },
+];
