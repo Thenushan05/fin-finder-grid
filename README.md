@@ -7,7 +7,6 @@ Ocylin is a comprehensive AI-powered fish hotspot prediction platform that combi
 ### 🗺️ Core Platform
 
 - **Interactive Hotspot Map**: Real-time visualization of high-probability fishing zones using Mapbox
-- **GPS Navigation System**: Route planning with distance calculation in Nautical Miles
 - **AI-Powered Predictions**: Machine learning models using XGBoost for fish hotspot prediction
 - **Environmental Data Integration**: Real-time SST, chlorophyll, and depth analysis
 
@@ -101,9 +100,7 @@ cd fin-finder-grid
 # Install dependencies
 npm install
 
-# Create environment file
-echo "VITE_MAPBOX_TOKEN=your_mapbox_token_here" > .env
-echo "VITE_API_BASE_URL=http://localhost:8000" >> .env
+
 
 # Start development server
 npm run dev
@@ -154,20 +151,18 @@ Fish-Full/
 ### Frontend (.env in fin-finder-grid/)
 
 ```env
-VITE_MAPBOX_TOKEN=your_mapbox_token_here
+
 VITE_API_BASE_URL=http://localhost:8000
-VITE_GOOGLE_MAPS_API_KEY=your_google_maps_key_here (optional)
+
 ```
 
 ### Backend (.env in Backend/fishspot-backend/)
 
 ```env
 MONGODB_URL=mongodb://localhost:27017/fishspot
-JWT_SECRET=your-secret-key-here
 JWT_ALGORITHM=HS256
 JWT_EXPIRE_MINUTES=30
-COPERNICUS_USERNAME=your_copernicus_username
-COPERNICUS_PASSWORD=your_copernicus_password
+
 ```
 
 ## 📦 Available Scripts
@@ -242,24 +237,6 @@ The backend provides a comprehensive REST API with the following key endpoints:
 - **`/api/v1/trips`** - Trip planning and history
 
 View complete API documentation at `http://localhost:8000/docs` when running the backend.
-
-## 📚 Additional Resources
-
-- **[Quick Start Guide](QUICK_START.md)** - Rapid setup and deployment guide
-- **[Implementation Details](IMPLEMENTATION_COMPLETE.md)** - Complete feature implementation docs
-- **[Weather Integration](WEATHER_API_INTEGRATION.md)** - Weather API integration guide
-- **[Trip Planner Integration](TRIP_PLANNER_INTEGRATION.md)** - Advanced trip planning features
-- **[Maintenance System Guide](Backend/fishspot-backend/MAINTENANCE_API.md)** - Maintenance tracking documentation
-
-## 🤝 Contributing
-
-Contributions are welcome! Please follow these steps:
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
 
 ## 📄 License
 
