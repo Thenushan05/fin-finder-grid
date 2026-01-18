@@ -278,8 +278,8 @@ export default function UnifiedMapControls({ mapRef }: Props) {
         <div className="p-4 pt-0 animate-in fade-in slide-in-from-top-2 duration-300 pointer-events-auto">
           <Tabs defaultValue="hotspots" className="w-full" onValueChange={setActiveTab}>
             <TabsList className="grid w-full grid-cols-2 bg-slate-800/50 mb-4 p-1 rounded-lg">
-              <TabsTrigger value="hotspots" className="text-xs font-semibold data-[state=active]:bg-slate-700 data-[state=active]:text-white data-[state=active]:shadow-sm">Hotspot Scanner</TabsTrigger>
-              <TabsTrigger value="grounds" className="text-xs font-semibold data-[state=active]:bg-slate-700 data-[state=active]:text-white data-[state=active]:shadow-sm">Regular Grounds</TabsTrigger>
+              <TabsTrigger value="hotspots" className="text-xs font-semibold text-slate-400 data-[state=active]:bg-slate-700 data-[state=active]:text-white data-[state=active]:shadow-sm">Hotspot Scanner</TabsTrigger>
+              <TabsTrigger value="grounds" className="text-xs font-semibold text-slate-400 data-[state=active]:bg-slate-700 data-[state=active]:text-white data-[state=active]:shadow-sm">Regular Grounds</TabsTrigger>
             </TabsList>
 
             <TabsContent value="hotspots" className="space-y-4">
@@ -287,11 +287,11 @@ export default function UnifiedMapControls({ mapRef }: Props) {
               <div className="space-y-3">
                   <div className="grid grid-cols-2 gap-3">
                      <div className="space-y-1">
-                        <label className="text-[10px] uppercase font-bold text-slate-500">Species</label>
+                        <label className="text-[10px] uppercase font-bold text-slate-400">Species</label>
                         <select
                             value={species}
                             onChange={(e) => setSpecies(e.target.value)}
-                            className="w-full bg-slate-800 text-sm py-2 px-3 rounded-lg border border-slate-700 focus:border-emerald-500 outline-none"
+                            className="w-full bg-slate-800 text-white text-sm py-2 px-3 rounded-lg border border-slate-700 focus:border-emerald-500 outline-none"
                         >
                             <option value="YFT">Yellowfin</option>
                             <option value="BET">Bigeye</option>
@@ -300,7 +300,7 @@ export default function UnifiedMapControls({ mapRef }: Props) {
                         </select>
                      </div>
                      <div className="space-y-1">
-                        <label className="text-[10px] uppercase font-bold text-slate-500">Threshold ({threshold})</label>
+                        <label className="text-[10px] uppercase font-bold text-slate-400">Threshold ({threshold})</label>
                         <input
                             type="range"
                             min="0.5"

@@ -81,6 +81,8 @@ import {
   Droplet,
   Cog,
   Fish,
+  Activity,
+  CalendarClock,
 } from "lucide-react";
 import AuthDebug from "@/components/AuthDebug";
 import { CountUp } from "@/components/ui/count-up";
@@ -992,7 +994,7 @@ export default function UnifiedMaintenance() {
               </DialogContent>
             </Dialog>
 
-            {vessels.length > 0 && (
+            {effectiveVessels.length > 0 && (
               <div className="w-72">
                 <Select
                   value={selectedVesselId || ""}
@@ -1002,7 +1004,7 @@ export default function UnifiedMaintenance() {
                     <SelectValue placeholder="Select a vessel to manage" />
                   </SelectTrigger>
                   <SelectContent>
-                    {vessels.map((v) => (
+                    {effectiveVessels.map((v) => (
                       <SelectItem key={v.id} value={v.id}>
                         <Ship className="inline mr-2 h-4 w-4 text-[#0284C5] dark:text-violet-500" />
                         {v.name} - {v.type}
@@ -1016,7 +1018,7 @@ export default function UnifiedMaintenance() {
         </div>
 
         {/* Empty State / Hero Section */}
-        {!selectedVesselId && vessels.length > 0 && (
+        {!selectedVesselId && effectiveVessels.length > 0 && (
           <div className="flex-1 flex flex-col items-center justify-center -mt-20">
             <div className="text-center space-y-6 max-w-2xl mx-auto p-12 rounded-3xl bg-white/40 dark:bg-slate-900/40 backdrop-blur-md border border-white/50 dark:border-slate-700/50 shadow-xl">
               <div className="h-24 w-24 rounded-full bg-gradient-to-br from-[#0284C5]/20 to-cyan-500/20 dark:from-violet-500/20 dark:to-indigo-500/20 flex items-center justify-center mx-auto mb-6 ring-1 ring-white/50 dark:ring-white/10">
@@ -1050,7 +1052,7 @@ export default function UnifiedMaintenance() {
         )}
 
         {/* No Vessels State */}
-        {vessels.length === 0 && (
+        {effectiveVessels.length === 0 && (
           <div className="flex-1 flex flex-col items-center justify-center">
             <Card className="p-12 text-center border-dashed border-2 border-slate-200 dark:border-violet-900/50 bg-white/40 dark:bg-violet-950/10 backdrop-blur-sm max-w-lg w-full">
               <div className="h-20 w-20 rounded-full bg-slate-100 dark:bg-slate-800/50 flex items-center justify-center mx-auto mb-6">
@@ -1083,6 +1085,88 @@ export default function UnifiedMaintenance() {
             </Card>
           </div>
         )}
+
+      {selectedVesselId && (
+        <div className="mb-8 p-6 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm relative overflow-hidden group">
+          <div className="absolute top-0 right-0 p-8 opacity-5 dark:opacity-10 pointer-events-none group-hover:scale-110 transition-transform duration-700">
+             <Ship className="h-64 w-64 text-slate-900 dark:text-white" />
+          </div>
+          
+          <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-8">
+            <div className="space-y-4">
+              <div className="space-y-1">
+                <div className="flex items-center gap-3">
+                  <Badge variant="outline" className="bg-sky-50 text-sky-700 border-sky-200 dark:bg-sky-900/30 dark:text-sky-400 dark:border-sky-800">
+                    {selectedVessel?.type}
+                  </Badge>
+                  <span className="text-sm text-slate-500 dark:text-slate-400 font-mono">ID: {selectedVessel?.id.split('-').pop()?.toUpperCase()}</span>
+                </div>
+                <h2 className="text-4xl font-extrabold text-slate-900 dark:text-white tracking-tight">
+                  {selectedVessel?.name}
+                </h2>
+              </div>
+              
+              <div className="flex gap-6">
+                 <div className="flex items-center gap-2">
+                    <div className="bg-emerald-100 dark:bg-emerald-900/30 p-2 rounded-lg">
+                      <CalendarClock className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+                    </div>
+                    <div>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 font-medium uppercase">Next Service</p>
+                      <p className="text-lg font-bold text-slate-900 dark:text-white">{selectedVessel?.stats?.nextServiceDue || "N/A"}</p>
+                    </div>
+                 </div>
+                 <div className="flex items-center gap-2">
+                    <div className="bg-blue-100 dark:bg-blue-900/30 p-2 rounded-lg">
+                      <Cpu className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                    </div>
+                    <div>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 font-medium uppercase">Systems</p>
+                      <p className="text-lg font-bold text-slate-900 dark:text-white">{selectedVessel?.systems?.length || 0} Active</p>
+                    </div>
+                 </div>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-8 bg-slate-50 dark:bg-slate-950/50 p-6 rounded-2xl border border-slate-100 dark:border-slate-800">
+               <div className="text-right">
+                  <p className="text-sm font-semibold text-slate-500 dark:text-slate-400 mb-1">Fleet Rradiness</p>
+                  <div className="flex items-baseline justify-end gap-2">
+                    <span className="text-5xl font-black text-slate-900 dark:text-white tracking-tighter">
+                      {currentSummary?.maintenance_score || 0}%
+                    </span>
+                    <span className={`text-sm font-bold px-2 py-0.5 rounded-full ${
+                      currentSummary?.maintenance_score >= 90 ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' :
+                      currentSummary?.maintenance_score >= 70 ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' :
+                      'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+                    }`}>
+                      {currentSummary?.maintenance_score >= 90 ? 'EXCELLENT' : 
+                       currentSummary?.maintenance_score >= 70 ? 'GOOD' : 'CRITICAL'}
+                    </span>
+                  </div>
+               </div>
+               
+               <div className="h-24 w-24 relative flex items-center justify-center">
+                  <svg className="h-full w-full rotate-[-90deg]" viewBox="0 0 100 100">
+                    <circle cx="50" cy="50" r="40" fill="transparent" stroke="currentColor" strokeWidth="8" className="text-slate-200 dark:text-slate-800" />
+                    <circle cx="50" cy="50" r="40" fill="transparent" stroke="currentColor" strokeWidth="8" 
+                      className={`${
+                        currentSummary?.maintenance_score >= 90 ? 'text-emerald-500' :
+                        currentSummary?.maintenance_score >= 70 ? 'text-amber-500' : 'text-red-500'
+                      }`}
+                      strokeDasharray={`${(currentSummary?.maintenance_score || 0) * 2.51} 251.2`}
+                      strokeLinecap="round"
+                    />
+                  </svg>
+                  <Activity className={`absolute h-8 w-8 ${
+                        currentSummary?.maintenance_score >= 90 ? 'text-emerald-500' :
+                        currentSummary?.maintenance_score >= 70 ? 'text-amber-500' : 'text-red-500'
+                  }`} />
+               </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {selectedVesselId && (
         <Tabs
