@@ -58,7 +58,7 @@ import Map, {
   MapRef,
 } from "react-map-gl";
 import { useRef } from "react";
-import JaffnaHotspotControls from "@/components/JaffnaHotspotControls";
+import UnifiedMapControls from "@/components/UnifiedMapControls";
 import "mapbox-gl/dist/mapbox-gl.css";
 import type { LineLayer } from "react-map-gl";
 
@@ -2334,7 +2334,7 @@ export default function HotspotMap() {
           </Map>
 
           {/* Jaffna controls overlay - passes the mapRef so it can add/update hotspot layer */}
-          <JaffnaHotspotControls mapRef={mapRef} />
+          <UnifiedMapControls mapRef={mapRef} />
         </CardContent>
       </Card>
 
