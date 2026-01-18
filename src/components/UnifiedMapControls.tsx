@@ -29,8 +29,7 @@ export default function UnifiedMapControls({ mapRef }: Props) {
   // --- Jaffna Hotspot Prediction State ---
   const [species, setSpecies] = useState("YFT");
   const [threshold, setThreshold] = useState(0.6);
-  const [sstOverride, setSstOverride] = useState("");
-  const [sshOverride, setSshOverride] = useState("");
+
   const [loading, setLoading] = useState(false);
 
   // --- Regular Grounds State ---
@@ -196,10 +195,7 @@ export default function UnifiedMapControls({ mapRef }: Props) {
       threshold,
       top_k: 200,
       bbox: JAFFNA_BBOX,
-      overrides: {
-        ...(sstOverride !== "" ? { sst: Number(sstOverride) } : {}),
-        ...(sshOverride !== "" ? { ssh: Number(sshOverride) } : {}),
-      },
+      overrides: {},
     };
 
     try {
@@ -317,26 +313,7 @@ export default function UnifiedMapControls({ mapRef }: Props) {
                      </div>
                   </div>
 
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1">
-                      <label className="text-[10px] uppercase font-bold text-slate-500">SST <span className="text-slate-600">(°C)</span></label>
-                      <input
-                        value={sstOverride}
-                        onChange={(e) => setSstOverride(e.target.value)}
-                        className="w-full bg-slate-800 text-sm py-2 px-3 rounded-lg border border-slate-700 focus:border-emerald-500 outline-none placeholder-slate-600"
-                        placeholder="Default"
-                      />
-                    </div>
-                    <div className="space-y-1">
-                      <label className="text-[10px] uppercase font-bold text-slate-500">SSH <span className="text-slate-600">(m)</span></label>
-                      <input
-                        value={sshOverride}
-                        onChange={(e) => setSshOverride(e.target.value)}
-                        className="w-full bg-slate-800 text-sm py-2 px-3 rounded-lg border border-slate-700 focus:border-emerald-500 outline-none placeholder-slate-600"
-                        placeholder="Default"
-                      />
-                    </div>
-                  </div>
+
 
                   <button
                     onClick={runPrediction}
