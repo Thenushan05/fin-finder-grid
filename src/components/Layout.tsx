@@ -2,6 +2,7 @@ import { ReactNode } from "react";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { Chatbot } from "@/components/Chatbot";
 import { Waves, Fish, Map, User, LayoutDashboard, Wrench, TrendingUp } from "lucide-react";
 import { useLocation, useNavigate, Link } from "react-router-dom";
 import { useSelector, useDispatch } from "react-redux";
@@ -94,6 +95,7 @@ export function Layout({ children }: { children: ReactNode }) {
           </main>
         </div>
       </div>
+      <Chatbot />
     </SidebarProvider>
   );
 }

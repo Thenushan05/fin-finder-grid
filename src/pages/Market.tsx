@@ -1,32 +1,30 @@
+
 import { useState } from "react";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   BarChart, Bar, Cell, PieChart, Pie, Radar, RadarChart,
-  PolarGrid, PolarAngleAxis, PolarRadiusAxis, Legend
+  PolarGrid, PolarAngleAxis, PolarRadiusAxis, Legend, AreaChart, Area
 } from "recharts";
 import {
   TrendingUp, TrendingDown, Minus, Calendar,
   Info, Activity, AlertTriangle, Fish,
   BarChart3, ChevronRight, CheckCircle2,
-  Wind, Lock
+  Wind, Lock, ArrowUpRight, ArrowDownRight, Gem
 } from "lucide-react";
 
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 
 import {
   mockSpecies,
-  mockFeatureImportance,
   mockMultiWeekTrend,
-  mockTrendDistribution,
-  mockSeasonalTrends,
   mockFishTrendSummary,
-  mockFestivalAccuracy,
-  mockSpeciesForecast,
   mockFestivalAlerts,
+  mockSpeciesForecast,
   getCurrentMonsoon
 } from "@/services/mockData";
 import { format } from "date-fns";
@@ -38,58 +36,78 @@ export default function Market() {
   const isDark = theme === "dark";
   const [selectedSpecies, setSelectedSpecies] = useState<string>("YFT");
 
-  // Colors
-  const COLOR_UP = "#10b981";    // Emerald 500
-  const COLOR_DOWN = "#ef4444";  // Red 500
-  const COLOR_STABLE = "#94a3b8"; // Slate 400
-  const PRIMARY_BLUE = "#3b82f6";
-  const PRIMARY_PURPLE = "#8b5cf6"; // Violet 500
-
   const currentSpecies = mockSpecies.find(s => s.code === selectedSpecies) || mockSpecies[0];
   const currentTrend = mockFishTrendSummary.find(f => f.code === selectedSpecies) || mockFishTrendSummary[0];
   const currentMonsoon = getCurrentMonsoon();
 
-  // Helper to render trend icon
-  const renderTrendIcon = (trend: string, size: string = "w-6 h-6") => {
-    if (trend === "Up") return <TrendingUp className={`${size} text-emerald-500`} />;
-    if (trend === "Down") return <TrendingDown className={`${size} text-red-500`} />;
-    return <Minus className={`${size} text-slate-400`} />;
+  const predictedPrices = [
+    { code: "YFT", name: "Yellowfin", price: 1540, growth: "+12%" },
+    { code: "BET", name: "Bigeye", price: 1420, growth: "+8%" },
+    { code: "SKJ", name: "Skipjack", price: 890, growth: "-2%" },
+    { code: "COM", name: "Seer Fish", price: 2100, growth: "+15%" },
+    { code: "SWO", name: "Swordfish", price: 1850, growth: "+5%" },
+  ].sort((a,b) => b.price - a.price);
+
+  // Color Constants
+  const colors = {
+    up: "#10b981",    // Emerald 500
+    down: "#f43f5e",  // Rose 500
+    neutral: "#94a3b8", // Slate 400
+    primary: "#6366f1", // Indigo 500
+    background: isDark ? "#0f172a" : "#ffffff",
+    cardBg: isDark ? "#1e293b" : "#ffffff",
+    grid: isDark ? "#334155" : "#e2e8f0",
+    text: isDark ? "#f8fafc" : "#0f172a",
+    subText: isDark ? "#94a3b8" : "#64748b"
   };
 
-  // Helper for trend text color
+  const renderTrendIcon = (trend: string, size: string = "w-6 h-6") => {
+    if (trend === "Up") return <TrendingUp className={cn(size, "text-emerald-500")} />;
+    if (trend === "Down") return <TrendingDown className={cn(size, "text-rose-500")} />;
+    return <Minus className={cn(size, "text-slate-400")} />;
+  };
+
   const getTrendColor = (trend: string) => {
     if (trend === "Up") return "text-emerald-600 dark:text-emerald-400";
-    if (trend === "Down") return "text-red-600 dark:text-red-400";
+    if (trend === "Down") return "text-rose-600 dark:text-rose-400";
     return "text-slate-600 dark:text-slate-400";
   };
 
-  return (
-    <div className="min-h-screen bg-[#F8F9FC] dark:bg-[#0B0C15] p-6 lg:p-8 font-sans space-y-8">
+  const getTrendBg = (trend: string) => {
+    if (trend === "Up") return "bg-emerald-500/10 text-emerald-500 border-emerald-500/20";
+    if (trend === "Down") return "bg-rose-500/10 text-rose-500 border-rose-500/20";
+    return "bg-slate-500/10 text-slate-500 border-slate-500/20";
+  };
 
-      {/* Header & Controls */}
-      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+  return (
+    <div className="min-h-screen bg-slate-50 dark:bg-[#0B0C15] p-6 lg:p-8 font-sans space-y-8">
+      
+      {/* --- HEADER --- */}
+      <div className="flex flex-col xl:flex-row justify-between items-start xl:items-center gap-6">
         <div>
-          <h1 className="text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight flex items-center gap-3">
-            Trend Forecasting
-          </h1>
-          <p className="text-slate-500 dark:text-slate-400 mt-1">Next-Gen Price Direction Analysis</p>
+           <div className="flex items-center gap-3 mb-1">
+             <div className="p-2 bg-indigo-600 rounded-lg shadow-lg shadow-indigo-600/20">
+               <Gem className="w-5 h-5 text-white" />
+             </div>
+             <h1 className="text-3xl font-extrabold text-slate-900 dark:text-white tracking-tight">Market Intelligence</h1>
+           </div>
+           <p className="text-slate-500 dark:text-slate-400 font-medium ml-1">Advanced Forecasting & Price Analytics</p>
         </div>
 
-        <div className="flex items-center gap-3 bg-white dark:bg-[#1E1E2E] p-1.5 rounded-xl shadow-sm border border-slate-200 dark:border-slate-800">
-          <div className="px-3 flex items-center gap-2 text-sm font-medium text-slate-500">
-            <Fish className="w-4 h-4 text-blue-500" />
-            <span>Analyze Species:</span>
+        <div className="flex items-center gap-4 bg-white dark:bg-slate-900/50 backdrop-blur-md p-1.5 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-800">
+          <div className="px-4 py-2 border-r border-slate-200 dark:border-slate-700 hidden sm:block">
+            <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Active Species</span>
           </div>
           <Select value={selectedSpecies} onValueChange={setSelectedSpecies}>
-            <SelectTrigger className="w-[180px] border-none shadow-none bg-transparent focus:ring-0 px-2 h-9 font-bold text-slate-700 dark:text-slate-200">
+            <SelectTrigger className="w-[200px] border-none shadow-none bg-transparent focus:ring-0 px-2 h-10 text-base font-bold text-slate-700 dark:text-slate-200">
               <SelectValue placeholder="Select Species" />
             </SelectTrigger>
-            <SelectContent>
+            <SelectContent className="max-h-[300px]">
               {mockSpecies.map((species) => (
-                <SelectItem key={species.id} value={species.code}>
-                  <div className="flex items-center gap-2">
-                    <span className="font-bold">{species.code}</span>
-                    <span className="text-xs text-slate-400 truncate max-w-[100px]">{species.name}</span>
+                <SelectItem key={species.id} value={species.code} className="py-3 cursor-pointer">
+                  <div className="flex items-center gap-3">
+                    <span className="font-mono font-bold text-slate-400 text-xs w-8">{species.code}</span>
+                    <span className="font-semibold text-slate-700 dark:text-slate-200">{species.name}</span>
                   </div>
                 </SelectItem>
               ))}
@@ -98,314 +116,365 @@ export default function Market() {
         </div>
       </div>
 
-      {/* --- HERO: PREDICTION CARD --- */}
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
+          
+          {/* --- LEFT COL: MAIN ANALYSIS --- */}
+          <div className="lg:col-span-8 space-y-6">
+              
+              {/* FEATURED INSIGHT CARD */}
+              <Card className="border-none shadow-xl bg-gradient-to-br from-white to-indigo-50/50 dark:from-[#1E1E2E] dark:to-[#151621] relative overflow-hidden">
+                <div className="absolute top-0 right-0 w-[500px] h-[500px] bg-indigo-500/5 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 pointer-events-none" />
+                
+                <CardContent className="p-8 relative z-10">
+                   <div className="flex flex-col md:flex-row justify-between gap-8 md:items-center">
+                      <div className="space-y-6 flex-1">
+                          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-slate-900/5 dark:bg-white/10 text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                            <Calendar className="w-3 h-3" />
+                            Next 7 Days Outlook
+                          </div>
+                          
+                          <div>
+                            <div className="flex items-baseline gap-4">
+                               <h2 className="text-6xl font-black tracking-tighter text-slate-900 dark:text-white">
+                                  {currentTrend.trend.toUpperCase()}
+                               </h2>
+                               <div className={cn("flex items-center gap-1.5 px-3 py-1.5 rounded-full text-sm font-bold border", getTrendBg(currentTrend.trend))}>
+                                  {currentTrend.trend === 'Up' ? <ArrowUpRight className="w-4 h-4" /> : currentTrend.trend === 'Down' ? <ArrowDownRight className="w-4 h-4" /> : <Minus className="w-4 h-4" />}
+                                  {(currentTrend.confidence * 100).toFixed(0)}% Confidence
+                               </div>
+                            </div>
+                            <p className="mt-4 text-slate-600 dark:text-slate-300 text-lg leading-relaxed max-w-xl">
+                              Market signals indicate a <span className="font-bold text-slate-900 dark:text-white">{currentTrend.trend === 'Up' ? 'bullish' : 'bearish'}</span> movement for {currentSpecies.name}. 
+                              This is primarily driven by <span className="font-semibold border-b-2 border-indigo-500/30">seasonal supply shifts</span> and recent weather patterns affecting catch rates.
+                            </p>
+                          </div>
+                          
+                          <div className="flex gap-4 pt-2">
+                             <div className="flex items-center gap-2 text-sm text-slate-500 font-medium">
+                                <div className="w-2 h-2 rounded-full bg-blue-500" />
+                                Strong Demand
+                             </div>
+                             <div className="flex items-center gap-2 text-sm text-slate-500 font-medium">
+                                <div className="w-2 h-2 rounded-full bg-emerald-500" />
+                                Low Supply
+                             </div>
+                             <div className="flex items-center gap-2 text-sm text-slate-500 font-medium">
+                                <div className="w-2 h-2 rounded-full bg-amber-500" />
+                                Festival Impact
+                             </div>
+                          </div>
+                      </div>
 
-        {/* Main Prediction */}
-        <Card className="lg:col-span-8 border-none shadow-lg bg-gradient-to-br from-white to-slate-50 dark:from-[#1E1E2E] dark:to-[#151621] relative overflow-hidden">
-          {/* Background Decoration */}
-          <div className={`absolute top-0 right-0 w-64 h-64 bg-gradient-to-bl opacity-10 blur-3xl rounded-full translate-x-1/3 -translate-y-1/3 pointer-events-none 
-            ${currentTrend.trend === 'Up' ? 'from-emerald-500 to-transparent' : currentTrend.trend === 'Down' ? 'from-red-500 to-transparent' : 'from-slate-500 to-transparent'}`}
-          />
+                      {/* Visual Graphic Ring */}
+                      <div className="relative w-48 h-48 flex-shrink-0 flex items-center justify-center hidden md:flex">
+                          <div className={cn("absolute inset-0 rounded-full border-[12px] opacity-20", currentTrend.trend === 'Up' ? 'border-emerald-500' : 'border-rose-500')}></div>
+                          <div className={cn("absolute inset-0 rounded-full border-[12px] border-t-transparent animate-[spin_3s_linear_infinite]", currentTrend.trend === 'Up' ? 'border-emerald-500' : 'border-rose-500')}></div>
+                          <div className="text-center z-10">
+                             <span className="block text-3xl font-bold text-slate-800 dark:text-white">{(currentTrend.confidence * 100).toFixed(0)}<span className="text-sm align-top">%</span></span>
+                             <span className="text-[10px] uppercase font-bold text-slate-400 tracking-widest">Probability</span>
+                          </div>
+                      </div>
+                   </div>
+                </CardContent>
+              </Card>
 
-          <CardContent className="p-8 relative z-10">
-            <div className="flex flex-col md:flex-row gap-8 items-start">
+              {/* FORECAST CHART */}
+              <Card className="border-none shadow-lg bg-white dark:bg-[#1E1E2E]">
+                <CardHeader className="flex flex-col sm:flex-row items-center justify-between pb-2 gap-4">
+                   <div>
+                     <CardTitle className="text-lg font-bold text-slate-800 dark:text-slate-100 mb-1">Price Trajectory Forecast</CardTitle>
+                     <CardDescription>Projected relative value index (Baseline 100)</CardDescription>
+                   </div>
+                   <div className="flex items-center gap-2">
+                       <Select value={selectedSpecies} onValueChange={setSelectedSpecies}>
+                        <SelectTrigger className="h-8 w-[110px] text-xs font-bold border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {mockSpecies.map((species) => (
+                            <SelectItem key={species.id} value={species.code} className="text-xs">
+                              {species.code}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                       <Tabs defaultValue="7d" className="w-auto">
+                          <TabsList className="grid w-full grid-cols-2 h-8">
+                            <TabsTrigger value="7d" className="text-xs h-6 px-2">7D</TabsTrigger>
+                            <TabsTrigger value="30d" className="text-xs h-6 px-2">30D</TabsTrigger>
+                          </TabsList>
+                       </Tabs>
+                   </div>
+                </CardHeader>
+                <CardContent className="h-[320px] w-full pt-4">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={mockSpeciesForecast} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                      <defs>
+                        <linearGradient id="colorYFT" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor={colors.primary} stopOpacity={0.3}/>
+                          <stop offset="95%" stopColor={colors.primary} stopOpacity={0}/>
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={colors.grid} />
+                      <XAxis 
+                        dataKey="day" 
+                        axisLine={false} 
+                        tickLine={false} 
+                        tick={{ fill: colors.subText, fontSize: 11, fontWeight: 500 }} 
+                        dy={10}
+                      />
+                      <YAxis 
+                        axisLine={false} 
+                        tickLine={false} 
+                        tick={{ fill: colors.subText, fontSize: 11 }} 
+                      />
+                      <Tooltip 
+                         contentStyle={{
+                            backgroundColor: colors.cardBg,
+                            borderColor: colors.grid,
+                            borderRadius: '12px',
+                            boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+                            color: colors.text
+                         }}
+                         itemStyle={{ color: colors.text }} // Fix for text visibility in tooltip
+                         cursor={{ stroke: colors.grid, strokeWidth: 2 }}
+                      />
+                      <Area 
+                        type="monotone" 
+                        dataKey={selectedSpecies} 
+                        stroke={colors.primary} 
+                        strokeWidth={4} 
+                        fillOpacity={1} 
+                        fill="url(#colorYFT)" 
+                        activeDot={{ r: 8, strokeWidth: 0, fill: colors.primary }}
+                      />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </CardContent>
+              </Card>
 
-              {/* Left Column: The Verdict */}
-              <div className="flex-1 space-y-6">
-                <div>
-                  <h3 className="text-sm font-bold text-slate-400 uppercase tracking-widest mb-2 flex items-center gap-2">
-                    <Calendar className="w-3.5 h-3.5" /> Next Week Outlook
-                  </h3>
-                  <div className="flex items-center gap-4">
-                    {renderTrendIcon(currentTrend.trend, "w-16 h-16")}
-                    <div>
-                      <span className={`text-5xl font-black tracking-tighter ${getTrendColor(currentTrend.trend)}`}>
-                        {currentTrend.trend.toUpperCase()}
-                      </span>
-                      <p className="text-slate-500 dark:text-slate-400 font-medium mt-1">
-                        Probability: <span className="text-slate-900 dark:text-white font-bold">{(currentTrend.confidence * 100).toFixed(0)}%</span>
-                      </p>
-                    </div>
+              {/* TOP PRICE PREDICTION CHART */}
+              <Card className="border-none shadow-lg bg-white dark:bg-[#1E1E2E]">
+                <CardHeader>
+                   <CardTitle className="text-lg font-bold text-slate-800 dark:text-white">Predicted Top Prices (Next Week)</CardTitle>
+                   <CardDescription>Forecasted market value per kg for major species</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  <div className="h-[250px] w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={predictedPrices} layout="vertical" margin={{ top: 5, right: 30, left: 40, bottom: 5 }}>
+                         <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke={colors.grid} />
+                         <XAxis type="number" hide />
+                         <YAxis 
+                            dataKey="code" 
+                            type="category" 
+                            axisLine={false} 
+                            tickLine={false} 
+                            tick={{ fill: colors.subText, fontWeight: 'bold', fontSize: 12 }} 
+                            width={30}
+                         />
+                         <Tooltip
+                            cursor={{ fill: 'transparent' }}
+                            content={({ active, payload }) => {
+                               if (active && payload && payload.length) {
+                                  const data = payload[0].payload;
+                                  return (
+                                     <div className="bg-slate-900 text-white text-xs p-3 rounded-lg shadow-xl border border-slate-700">
+                                        <div className="font-bold text-sm mb-1">{data.name}</div>
+                                        <div className="text-slate-300">LKR {data.price} <span className="text-[10px]">/kg</span></div>
+                                        <div className="text-emerald-400 font-bold mt-1 text-[10px] uppercase tracking-wider">{data.growth} growth</div>
+                                     </div>
+                                  );
+                               }
+                               return null;
+                            }}
+                         />
+                         <Bar dataKey="price" radius={[0, 4, 4, 0]} barSize={24} animationDuration={1000}>
+                           {predictedPrices.map((entry, index) => (
+                             <Cell key={`cell-${index}`} fill={index === 0 ? colors.primary : colors.neutral} />
+                           ))}
+                         </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
                   </div>
-                </div>
+                </CardContent>
+              </Card>
 
-                <div className="bg-white/50 dark:bg-black/20 backdrop-blur-sm p-4 rounded-xl border border-slate-100 dark:border-slate-800">
-                  <h4 className="flex items-center gap-2 font-bold text-slate-800 dark:text-slate-200 mb-2">
-                    <Info className="w-4 h-4 text-blue-500" />
-                    Why this trend?
-                  </h4>
-                  <p className="text-slate-600 dark:text-slate-300 leading-relaxed text-sm">
-                    Our models detect strong <strong>{currentMonsoon}</strong> signals combined with increased fuel costs.
-                    Historical data suggests a <span className="font-semibold">{currentTrend.trend === 'Up' ? 'supply shortage' : 'surplus'}</span> for {currentSpecies.name} during this seasonal transition.
-                  </p>
-                </div>
-
-              </div>
-
-
-
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Right: Seasonal Context Panel */}
-        <Card className="lg:col-span-4 border-none shadow-md bg-[#2A2B36] text-white overflow-hidden relative">
-          <div className="absolute top-0 right-0 p-32 bg-blue-500/20 blur-3xl rounded-full" />
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-lg">
-              <Wind className="w-5 h-5 text-sky-400" />
-              Seasonal Context
-            </CardTitle>
-            <CardDescription className="text-slate-300">Current Phase: <span className="text-white font-bold">{currentMonsoon}</span></CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-6 relative z-10">
-
-            <div className="space-y-4">
-              <div className="flex gap-3 items-start p-3 rounded-lg bg-white/5 border border-white/10">
-                <div className="p-2 bg-sky-500/20 rounded-md text-sky-300">
-                  <Activity className="w-4 h-4" />
-                </div>
-                <div>
-                  <h4 className="font-bold text-sm">Market Volatility</h4>
-                  <p className="text-xs text-slate-300 mt-1">Expect moderate fluctuations due to unpredictable weather patterns in the southern zones.</p>
-                </div>
-              </div>
-
-              <div className="flex gap-3 items-start p-3 rounded-lg bg-white/5 border border-white/10">
-                <div className="p-2 bg-yellow-500/20 rounded-md text-yellow-300">
-                  <AlertTriangle className="w-4 h-4" />
-                </div>
-                <div>
-                  <h4 className="font-bold text-sm">Festival Impact</h4>
-                  <p className="text-xs text-slate-300 mt-1">Upcoming Poya days may spike demand for local varieties.</p>
-                </div>
-              </div>
-            </div>
-
-            <div className="pt-4 border-t border-white/10">
-              <h4 className="text-xs font-bold uppercase text-slate-400 mb-3">Historical Seasonal Trend</h4>
-              <div className="flex justify-between items-center text-sm">
-                <span>Typ. Price Movement</span>
-                <span className="font-bold text-red-300">Usually Drops (-5%)</span>
-              </div>
-              <div className="flex justify-between items-center text-sm mt-2">
-                <span>Catch Volume</span>
-                <span className="font-bold text-green-300">Typically High</span>
-              </div>
-            </div>
-
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* --- SECTION 2: MULTI-WEEK OUTLOOK --- */}
-      <div>
-        <h2 className="text-xl font-bold text-slate-900 dark:text-white mb-4 flex items-center gap-2">
-          <Calendar className="w-5 h-5 text-slate-400" />
-          Multi-Week Horizon
-        </h2>
-        <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          {mockMultiWeekTrend.map((week, idx) => (
-            <Card key={idx} className={`border-none shadow-sm ${idx === 0 ? 'ring-2 ring-blue-500 dark:ring-blue-400' : ''} bg-white dark:bg-[#1E1E2E]`}>
-              <CardContent className="p-4 flex flex-col items-center text-center space-y-3">
-                <span className="text-xs font-bold text-slate-400 uppercase tracking-widest text-[#0284C5]">
-                  {idx === 0 ? "Next Week" : `Week +${idx}`}
-                </span>
-                <div className="p-3 bg-slate-50 dark:bg-slate-800 rounded-full">
-                  {renderTrendIcon(week.trend)}
-                </div>
-                <div>
-                  <span className={`block font-bold ${getTrendColor(week.trend)}`}>{week.trend}</span>
-                  <span className="text-xs text-slate-400">Conf: {(week.confidence * 100).toFixed(0)}%</span>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      </div>
-
-      {/* --- SECTION 2.5: SPECIES COMPARISONS (NEW LINE CHART) --- */}
-      <Card className="border-none shadow-md bg-white dark:bg-[#1E1E2E]">
-        <CardHeader>
-          <CardTitle className="text-lg flex items-center gap-2">
-            <Activity className="w-5 h-5 text-blue-500" />
-            Species Trend Comparison (Next 7 Days)
-          </CardTitle>
-          <CardDescription>Relative movement index (Baseline = 100)</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="h-[300px] w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <LineChart data={mockSpeciesForecast} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={isDark ? "#334155" : "#e2e8f0"} />
-                <XAxis
-                  dataKey="day"
-                  axisLine={false}
-                  tickLine={false}
-                  tick={{ fill: isDark ? "#94a3b8" : "#64748b", fontSize: 12 }}
-                  dy={10}
-                />
-                <YAxis
-                  axisLine={false}
-                  tickLine={false}
-                  tick={{ fill: isDark ? "#94a3b8" : "#64748b", fontSize: 12 }}
-                  domain={['auto', 'auto']}
-                />
-                <Tooltip
-                  contentStyle={{
-                    borderRadius: '12px',
-                    border: 'none',
-                    boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)',
-                    backgroundColor: isDark ? '#1E1E2E' : '#fff',
-                    color: isDark ? '#fff' : '#000'
-                  }}
-                />
-                <Legend verticalAlign="top" height={36} iconType="circle" />
-
-                <Line type="monotone" dataKey="YFT" name="Yellowfin (YFT)" stroke="#3b82f6" strokeWidth={3} dot={{ r: 4 }} activeDot={{ r: 6 }} />
-                <Line type="monotone" dataKey="BET" name="Bigeye (BET)" stroke="#f59e0b" strokeWidth={3} dot={{ r: 4 }} activeDot={{ r: 6 }} />
-                <Line type="monotone" dataKey="SKJ" name="Skipjack (SKJ)" stroke="#ef4444" strokeWidth={3} dot={{ r: 4 }} activeDot={{ r: 6 }} />
-                <Line type="monotone" dataKey="COM" name="Seer Fish (COM)" stroke="#10b981" strokeWidth={3} dot={{ r: 4 }} activeDot={{ r: 6 }} />
-              </LineChart>
-            </ResponsiveContainer>
           </div>
-        </CardContent>
-      </Card>
 
-
-      {/* --- SECTION 3: FESTIVAL ALERTS --- */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <Card className="border-none shadow-md bg-white dark:bg-[#1E1E2E]">
-          <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2 text-lg">
-              <Calendar className="w-5 h-5 text-indigo-500" />
-              Upcoming Festival Alerts
-            </CardTitle>
-            <CardDescription>Events that typically impact fish prices</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4 pt-2">
-              {mockFestivalAlerts.filter(f => f.type === 'upcoming').map((festival) => (
-                <div key={festival.id} className="flex items-start gap-4 p-3 rounded-xl bg-slate-50 dark:bg-[#252636] border border-transparent hover:border-indigo-100 dark:hover:border-indigo-900 transition-all">
-                  <div className="flex-shrink-0 w-12 text-center bg-white dark:bg-[#1E1E2E] rounded-lg p-1 shadow-sm border border-slate-100 dark:border-slate-700">
-                    <span className="block text-xs text-slate-400 font-bold uppercase">{format(new Date(festival.date), 'MMM')}</span>
-                    <span className="block text-lg font-bold text-slate-800 dark:text-slate-200">{format(new Date(festival.date), 'dd')}</span>
-                  </div>
-                  <div>
-                    <h4 className="font-bold text-slate-800 dark:text-white text-sm">{festival.name}</h4>
-                    <div className="flex items-center gap-2 mt-1">
-                      <Badge variant="secondary" className={`text-[10px] h-5 ${festival.impact === 'High' ? 'bg-red-100 text-red-700 dark:bg-red-500/10 dark:text-red-400' : 'bg-yellow-100 text-yellow-700 dark:bg-yellow-500/10 dark:text-yellow-400'}`}>
-                        {festival.impact} Impact
-                      </Badge>
-                      <span className="text-xs text-slate-400">in {Math.ceil((new Date(festival.date).getTime() - new Date().getTime()) / (1000 * 3600 * 24))} days</span>
+          {/* --- RIGHT COL: SIDEBAR WIDGETS --- */}
+          <div className="lg:col-span-4 space-y-6">
+              
+              {/* SEASONAL CONTEXT */}
+              <Card className="border-none shadow-lg bg-slate-900 text-white relative overflow-hidden">
+                 <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-500/20 rounded-full blur-3xl -translate-y-1/2 translate-x-1/2 pointer-events-none" />
+                 <CardHeader>
+                    <div className="flex items-center gap-2 mb-1">
+                       <Wind className="w-5 h-5 text-emerald-400" />
+                       <span className="text-xs font-bold uppercase tracking-widest text-emerald-400">Seasonal Context</span>
                     </div>
-                  </div>
-                </div>
-              ))}
-              {mockFestivalAlerts.filter(f => f.type === 'upcoming').length === 0 && (
-                <div className="flex flex-col items-center justify-center py-6 text-slate-400">
-                  <Calendar className="w-8 h-8 mb-2 opacity-20" />
-                  <p className="text-sm">No major festivals in the next 30 days.</p>
-                </div>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border-none shadow-md bg-white dark:bg-[#1E1E2E]">
-          <CardHeader className="pb-2">
-            <CardTitle className="flex items-center gap-2 text-lg">
-              <Activity className="w-5 h-5 text-emerald-500" />
-              Live Market Signals
-            </CardTitle>
-            <CardDescription>Real-time factors affecting today's trade</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4 pt-2">
-              <div className="flex gap-3 items-start p-3 rounded-lg border border-slate-100 dark:border-slate-800">
-                <TrendingDown className="w-5 h-5 text-emerald-500 mt-0.5" />
-                <div>
-                  <h4 className="font-bold text-sm text-slate-800 dark:text-slate-200">Fuel Prices Dropped</h4>
-                  <p className="text-xs text-slate-500 mt-1">Diesel prices down by 5 LKR/L. Logistics costs expected to decrease.</p>
-                </div>
-              </div>
-              <div className="flex gap-3 items-start p-3 rounded-lg border border-slate-100 dark:border-slate-800">
-                <Wind className="w-5 h-5 text-amber-500 mt-0.5" />
-                <div>
-                  <h4 className="font-bold text-sm text-slate-800 dark:text-slate-200">High Wind Warning</h4>
-                  <p className="text-xs text-slate-500 mt-1">Galle & Matara coastal areas experiencing 40km/h winds. Small boats grounded.</p>
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-
-      {/* --- SECTION 4: FISH-WISE SUMMARY --- */}
-      <Card className="border-none shadow-md bg-white dark:bg-[#1E1E2E] overflow-hidden">
-        <CardHeader className="flex flex-row items-center justify-between">
-          <div>
-            <CardTitle className="text-lg">Fish-Wise Market Pulse</CardTitle>
-            <CardDescription>Live trend signals for key species</CardDescription>
-          </div>
-          <Button variant="ghost" size="sm" className="text-slate-400 hover:text-slate-600">
-            View Full Report <ChevronRight className="w-4 h-4 ml-1" />
-          </Button>
-        </CardHeader>
-        <CardContent className="p-0">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm text-left">
-              <thead className="text-xs text-slate-500 uppercase bg-slate-50 dark:bg-[#151621]">
-                <tr>
-                  <th className="px-6 py-4 font-bold">Species</th>
-                  <th className="px-6 py-4 font-bold">Trend Signal</th>
-                  <th className="px-6 py-4 font-bold">Confidence</th>
-                  <th className="px-6 py-4 font-bold">Action</th>
-                  <th className="px-6 py-4 font-bold text-right">Status</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                {mockFishTrendSummary.map((fish, idx) => (
-                  <tr key={fish.code} className="hover:bg-slate-50 dark:hover:bg-slate-800/50 transition-colors cursor-pointer" onClick={() => setSelectedSpecies(fish.code)}>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-full bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 flex items-center justify-center font-bold text-xs">
-                          {fish.code}
+                    <CardTitle className="text-2xl font-bold">{currentMonsoon}</CardTitle>
+                 </CardHeader>
+                 <CardContent className="space-y-4 relative z-10">
+                     <div className="p-4 rounded-xl bg-white/5 border border-white/10 backdrop-blur-sm">
+                        <div className="flex items-center justify-between mb-2">
+                           <span className="text-sm font-medium text-slate-300">Volatility</span>
+                           <Badge variant="outline" className="border-amber-500/50 text-amber-400 bg-amber-500/10">Moderate</Badge>
                         </div>
-                        <span className="font-semibold text-slate-900 dark:text-white">{fish.name}</span>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-2">
-                        {renderTrendIcon(fish.trend, "w-4 h-4")}
-                        <span className={`font-bold ${getTrendColor(fish.trend)}`}>{fish.trend}</span>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <div className="flex items-center gap-2">
-                        <Progress value={fish.confidence * 100} className="w-16 h-2" indicatorClassName={fish.confidence > 0.8 ? "bg-emerald-500" : "bg-amber-500"} />
-                        <span className="text-xs text-slate-500 font-mono">{(fish.confidence * 100).toFixed(0)}%</span>
-                      </div>
-                    </td>
-                    <td className="px-6 py-4">
-                      <Badge variant="outline" className={`${fish.recommendedAction === 'Buy' ? 'border-emerald-200 text-emerald-600 bg-emerald-50' : 'border-slate-200 text-slate-600 bg-slate-50'} dark:bg-transparent`}>
-                        {fish.recommendedAction}
-                      </Badge>
-                    </td>
-                    <td className="px-6 py-4 text-right">
-                      <div className="flex items-center justify-end gap-1 text-emerald-500">
-                        <CheckCircle2 className="w-4 h-4" />
-                        <span className="text-xs font-semibold">Active</span>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+                        <Progress value={65} className="h-1.5 bg-white/10" indicatorClassName="bg-amber-500" />
+                     </div>
+                     
+                     <div className="space-y-3 pt-2">
+                        <div className="flex gap-3 text-sm">
+                           <div className="mt-1"><Activity className="w-4 h-4 text-slate-400" /></div>
+                           <p className="text-slate-300 leading-snug">Southern coastal winds currently limiting small-boat activity.</p>
+                        </div>
+                        <div className="flex gap-3 text-sm">
+                           <div className="mt-1"><Calendar className="w-4 h-4 text-slate-400" /></div>
+                           <p className="text-slate-300 leading-snug">Pre-festival stocking expected to begin in <span className="text-white font-bold">3 days</span>.</p>
+                        </div>
+                     </div>
+                 </CardContent>
+              </Card>
+
+              {/* MARKET ALERTS */}
+              <Card className="border-none shadow-lg bg-white dark:bg-[#1E1E2E]">
+                 <CardHeader>
+                    <CardTitle className="text-base font-bold flex items-center gap-2">
+                      <AlertTriangle className="w-4 h-4 text-amber-500" />
+                      Critical Alerts
+                    </CardTitle>
+                 </CardHeader>
+                 <CardContent className="space-y-3">
+                    {mockFestivalAlerts.slice(0, 3).map((alert, i) => (
+                       <div key={i} className="flex gap-3 p-3 rounded-lg bg-slate-50 dark:bg-slate-800/50 border border-slate-100 dark:border-slate-700">
+                          <div className="flex-shrink-0 w-10 text-center">
+                             <span className="block text-[10px] font-bold text-slate-400 uppercase">{format(new Date(alert.date), 'MMM')}</span>
+                             <span className="block text-lg font-bold text-slate-700 dark:text-slate-200">{format(new Date(alert.date), 'dd')}</span>
+                          </div>
+                          <div>
+                             <h4 className="text-sm font-bold text-slate-800 dark:text-slate-200">{alert.name}</h4>
+                             <p className="text-xs text-slate-500 mt-0.5">{alert.impact} Impact Expected</p>
+                          </div>
+                       </div>
+                    ))}
+                 </CardContent>
+              </Card>
+
+              {/* MULTI WEEK MINI GRID */}
+              <div>
+                 <h3 className="text-sm font-bold text-slate-500 uppercase tracking-widest mb-3">4-Week Horizon</h3>
+                 <div className="grid grid-cols-2 gap-3">
+                    {mockMultiWeekTrend.map((week, i) => (
+                       <div key={i} className="p-3 bg-white dark:bg-[#1E1E2E] rounded-xl border border-slate-100 dark:border-slate-800 shadow-sm flex flex-col items-center justify-center text-center">
+                          <span className="text-[10px] font-bold text-slate-400 mb-1">Week {i + 1}</span>
+                          {renderTrendIcon(week.trend)}
+                          <span className={cn("text-xs font-bold mt-1", getTrendColor(week.trend))}>{week.trend}</span>
+                       </div>
+                    ))}
+                 </div>
+              </div>
+
           </div>
-        </CardContent>
+      </div>
+
+      {/* --- BOTTOM SECTION: DETAILED TABLE --- */}
+      <Card className="border-none shadow-xl bg-white dark:bg-[#1E1E2E] overflow-hidden">
+         <CardHeader className="border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/20 pb-4">
+            <div className="flex items-center justify-between">
+               <div>
+                  <CardTitle className="text-lg font-bold text-slate-800 dark:text-white">Global Species Watchlist</CardTitle>
+                  <CardDescription>Live tracking across all major monitored species</CardDescription>
+               </div>
+               <div className="flex gap-2">
+                  <Button variant="outline" size="sm" className="h-8 text-xs font-bold border-slate-200 dark:border-slate-700">Download CSV</Button>
+                  <Button size="sm" className="h-8 text-xs font-bold bg-indigo-600 hover:bg-indigo-700">Full Report</Button>
+               </div>
+            </div>
+         </CardHeader>
+         <CardContent className="p-0">
+             <div className="overflow-x-auto">
+                <table className="w-full text-sm text-left border-collapse">
+                   <thead>
+                      <tr className="border-b border-slate-100 dark:border-slate-800">
+                         <th className="px-6 py-4 font-bold text-slate-500 uppercase text-xs tracking-wider">Species</th>
+                         <th className="px-6 py-4 font-bold text-slate-500 uppercase text-xs tracking-wider">Current Price</th>
+                         <th className="px-6 py-4 font-bold text-slate-500 uppercase text-xs tracking-wider">Trend Signal</th>
+                         <th className="px-6 py-4 font-bold text-slate-500 uppercase text-xs tracking-wider">Strength</th>
+                         <th className="px-6 py-4 font-bold text-slate-500 uppercase text-xs tracking-wider">Algorithm Rec.</th>
+                         <th className="px-6 py-4 font-bold text-slate-500 uppercase text-xs tracking-wider text-right">Status</th>
+                      </tr>
+                   </thead>
+                   <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                      {mockFishTrendSummary.map((fish, i) => (
+                         <tr 
+                            key={fish.code} 
+                            onClick={() => setSelectedSpecies(fish.code)}
+                            className={cn(
+                               "group cursor-pointer transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50",
+                               selectedSpecies === fish.code ? "bg-indigo-50/50 dark:bg-indigo-900/10" : ""
+                            )}
+                         >
+                            <td className="px-6 py-4">
+                               <div className="flex items-center gap-3">
+                                  <div className={cn(
+                                     "w-10 h-10 rounded-xl flex items-center justify-center font-bold text-xs shadow-sm",
+                                     selectedSpecies === fish.code ? "bg-indigo-600 text-white" : "bg-slate-100 dark:bg-slate-800 text-slate-500"
+                                  )}>
+                                     {fish.code}
+                                  </div>
+                                  <div>
+                                     <div className="font-bold text-slate-900 dark:text-slate-100">{fish.name}</div>
+                                     <div className="text-xs text-slate-400">updated 2h ago</div>
+                                  </div>
+                               </div>
+                            </td>
+                            <td className="px-6 py-4">
+                               <div className="font-mono font-medium text-slate-700 dark:text-slate-300">
+                                  LKR 1,240 <span className="text-xs text-slate-400">/kg</span>
+                               </div>
+                            </td>
+                            <td className="px-6 py-4">
+                               <div className={cn("inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-bold ring-1 ring-inset", getTrendBg(fish.trend))}>
+                                  {fish.trend === 'Up' ? <TrendingUp className="w-3.5 h-3.5" /> : <TrendingDown className="w-3.5 h-3.5" />}
+                                  {fish.trend.toUpperCase()}
+                               </div>
+                            </td>
+                            <td className="px-6 py-4">
+                               <div className="w-24 space-y-1">
+                                  <div className="flex justify-between text-[10px] font-bold text-slate-500">
+                                     <span>Signal</span>
+                                     <span>{(fish.confidence * 100).toFixed(0)}%</span>
+                                  </div>
+                                  <Progress value={fish.confidence * 100} className="h-1.5" indicatorClassName={fish.confidence > 0.7 ? "bg-emerald-500" : "bg-amber-500"} />
+                               </div>
+                            </td>
+                            <td className="px-6 py-4">
+                               <Badge className={cn(
+                                  "border-0 font-bold",
+                                  fish.recommendedAction === 'Buy' ? "bg-emerald-500 hover:bg-emerald-600" : 
+                                  fish.recommendedAction === 'Sell' ? "bg-rose-500 hover:bg-rose-600" : "bg-slate-500 hover:bg-slate-600"
+                               )}>
+                                  {fish.recommendedAction} Now
+                               </Badge>
+                            </td>
+                            <td className="px-6 py-4 text-right">
+                               <div className="flex items-center justify-end gap-1.5 text-xs font-medium text-slate-500">
+                                  <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                                  Active
+                               </div>
+                            </td>
+                         </tr>
+                      ))}
+                   </tbody>
+                </table>
+             </div>
+         </CardContent>
+         <CardFooter className="bg-slate-50 dark:bg-slate-900/40 p-4 border-t border-slate-100 dark:border-slate-800 flex justify-center">
+            <Button variant="ghost" size="sm" className="text-xs text-slate-500 font-medium hover:text-indigo-600">
+               Load 15 more comparisons
+            </Button>
+         </CardFooter>
       </Card>
 
     </div>
