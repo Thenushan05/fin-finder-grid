@@ -1,6 +1,7 @@
 
 import { useState, useRef, useEffect } from "react";
-import { MessageCircle, X, Send, Map, TrendingUp, Fish, Wrench, ChevronRight, Sparkles, Bot } from "lucide-react";
+
+import { MessageCircle, X, Send, Map, TrendingUp, Fish, Wrench, ChevronRight, Sparkles, Bot, Paperclip } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
@@ -24,6 +25,7 @@ export function Chatbot() {
   const [inputValue, setInputValue] = useState("");
   const [isTyping, setIsTyping] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const navigate = useNavigate();
 
   // Scroll to bottom when messages change
@@ -65,6 +67,14 @@ export function Chatbot() {
   const handleLinkClick = (path: string) => {
     navigate(path);
     // Optional: close chat or keep open
+  };
+
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      // For now simply append to input to show it worked
+      setInputValue((prev) => (prev ? `${prev} [Attached: ${file.name}]` : `[Attached: ${file.name}]`));
+    }
   };
 
   return (
@@ -169,22 +179,41 @@ export function Chatbot() {
         <div className="p-3 bg-white dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800">
            <form 
              onSubmit={(e) => { e.preventDefault(); handleSend(); }}
-             className="flex gap-2 relative"
+             className="flex gap-2 items-center"
            >
-              <Input
-                value={inputValue}
-                onChange={(e) => setInputValue(e.target.value)}
-                placeholder="Ask about fish, weather..."
-                className="pr-10 bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 focus-visible:ring-indigo-500 rounded-xl"
+              {/* File Upload Input */}
+              <input
+                 type="file"
+                 ref={fileInputRef}
+                 className="hidden"
+                 onChange={handleFileSelect}
               />
-              <Button 
-                type="submit" 
-                size="icon" 
-                className="absolute right-1 top-1 h-8 w-8 bg-indigo-600 hover:bg-indigo-700 rounded-lg"
-                disabled={!inputValue.trim() || isTyping}
+              <Button
+                 type="button"
+                 variant="ghost"
+                 size="icon"
+                 className="h-10 w-10 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-slate-800 rounded-xl transition-colors"
+                 onClick={() => fileInputRef.current?.click()}
               >
-                 <Send className="h-4 w-4 text-white" />
+                 <Paperclip className="h-5 w-5" />
               </Button>
+
+              <div className="relative flex-1">
+                <Input
+                  value={inputValue}
+                  onChange={(e) => setInputValue(e.target.value)}
+                  placeholder="Ask about fish, weather..."
+                  className="pr-10 bg-slate-50 dark:bg-slate-950 border-slate-200 dark:border-slate-800 focus-visible:ring-indigo-500 rounded-xl"
+                />
+                <Button 
+                  type="submit" 
+                  size="icon" 
+                  className="absolute right-1 top-1 h-8 w-8 bg-indigo-600 hover:bg-indigo-700 rounded-lg"
+                  disabled={!inputValue.trim() || isTyping}
+                >
+                   <Send className="h-4 w-4 text-white" />
+                </Button>
+              </div>
            </form>
         </div>
       </div>

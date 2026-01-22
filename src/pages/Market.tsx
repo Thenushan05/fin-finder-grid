@@ -1,10 +1,16 @@
 
 import { useState } from "react";
 import {
-  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer,
   BarChart, Bar, Cell, PieChart, Pie, Radar, RadarChart,
   PolarGrid, PolarAngleAxis, PolarRadiusAxis, Legend, AreaChart, Area
 } from "recharts";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import {
   TrendingUp, TrendingDown, Minus, Calendar,
   Info, Activity, AlertTriangle, Fish,
@@ -149,18 +155,33 @@ export default function Market() {
                             </p>
                           </div>
                           
-                          <div className="flex gap-4 pt-2">
-                             <div className="flex items-center gap-2 text-sm text-slate-500 font-medium">
-                                <div className="w-2 h-2 rounded-full bg-blue-500" />
-                                Strong Demand
+                          <div className="space-y-3 pt-4">
+                             <div className="flex items-center gap-2">
+                                <span className="text-xs font-bold text-slate-400 uppercase tracking-widest">Key Market Drivers</span>
+                                <TooltipProvider>
+                                  <Tooltip>
+                                    <TooltipTrigger asChild>
+                                      <Info className="w-3 h-3 text-slate-300 cursor-help" />
+                                    </TooltipTrigger>
+                                    <TooltipContent className="max-w-[300px] bg-slate-900 text-white border-slate-800">
+                                      <p>These factors are the primary reasons for the current price trend. Use this insight to decide whether to sell now or wait.</p>
+                                    </TooltipContent>
+                                  </Tooltip>
+                                </TooltipProvider>
                              </div>
-                             <div className="flex items-center gap-2 text-sm text-slate-500 font-medium">
-                                <div className="w-2 h-2 rounded-full bg-emerald-500" />
-                                Low Supply
-                             </div>
-                             <div className="flex items-center gap-2 text-sm text-slate-500 font-medium">
-                                <div className="w-2 h-2 rounded-full bg-amber-500" />
-                                Festival Impact
+                             <div className="flex flex-wrap gap-2">
+                                <Badge variant="outline" className="bg-blue-50 dark:bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-800 gap-1.5 py-1.5 pl-2 pr-3">
+                                   <Activity className="w-3.5 h-3.5" />
+                                   Strong Demand
+                                </Badge>
+                                <Badge variant="outline" className="bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800 gap-1.5 py-1.5 pl-2 pr-3">
+                                   <Fish className="w-3.5 h-3.5" />
+                                   Limited Supply
+                                </Badge>
+                                <Badge variant="outline" className="bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-800 gap-1.5 py-1.5 pl-2 pr-3">
+                                   <Calendar className="w-3.5 h-3.5" />
+                                   Festival Season
+                                </Badge>
                              </div>
                           </div>
                       </div>
@@ -208,7 +229,7 @@ export default function Market() {
                 </CardHeader>
                 <CardContent className="h-[320px] w-full pt-4">
                   <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={mockSpeciesForecast} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                    <AreaChart data={mockSpeciesForecast} margin={{ top: 10, right: 10, left: 15, bottom: 0 }}>
                       <defs>
                         <linearGradient id="colorYFT" x1="0" y1="0" x2="0" y2="1">
                           <stop offset="5%" stopColor={colors.primary} stopOpacity={0.3}/>
@@ -227,8 +248,15 @@ export default function Market() {
                         axisLine={false} 
                         tickLine={false} 
                         tick={{ fill: colors.subText, fontSize: 11 }} 
+                        tickFormatter={(value) => `${value}%`}
+                        label={{ 
+                           value: 'Price %', 
+                           angle: -90, 
+                           position: 'insideLeft', 
+                           style: { textAnchor: 'middle', fill: colors.subText, fontSize: 10 } 
+                        }}
                       />
-                      <Tooltip 
+                      <RechartsTooltip 
                          contentStyle={{
                             backgroundColor: colors.cardBg,
                             borderColor: colors.grid,
@@ -273,7 +301,7 @@ export default function Market() {
                             tick={{ fill: colors.subText, fontWeight: 'bold', fontSize: 12 }} 
                             width={30}
                          />
-                         <Tooltip
+                         <RechartsTooltip
                             cursor={{ fill: 'transparent' }}
                             content={({ active, payload }) => {
                                if (active && payload && payload.length) {
@@ -318,10 +346,16 @@ export default function Market() {
                  <CardContent className="space-y-4 relative z-10">
                      <div className="p-4 rounded-xl bg-white/5 border border-white/10 backdrop-blur-sm">
                         <div className="flex items-center justify-between mb-2">
-                           <span className="text-sm font-medium text-slate-300">Volatility</span>
+                           <div className="flex items-center gap-2 cursor-help" title="Indicates how rapidly market prices are changing">
+                              <span className="text-sm font-medium text-slate-300">Disturbance Volatility</span>
+                              <Info className="w-3.5 h-3.5 text-slate-400" />
+                           </div>
                            <Badge variant="outline" className="border-amber-500/50 text-amber-400 bg-amber-500/10">Moderate</Badge>
                         </div>
                         <Progress value={65} className="h-1.5 bg-white/10" indicatorClassName="bg-amber-500" />
+                        <p className="text-[10px] text-slate-400 mt-2">
+                           Prices may fluctuate <strong>±15%</strong> due to weather instability.
+                        </p>
                      </div>
                      
                      <div className="space-y-3 pt-2">
@@ -394,80 +428,80 @@ export default function Market() {
          </CardHeader>
          <CardContent className="p-0">
              <div className="overflow-x-auto">
-                <table className="w-full text-sm text-left border-collapse">
-                   <thead>
-                      <tr className="border-b border-slate-100 dark:border-slate-800">
-                         <th className="px-6 py-4 font-bold text-slate-500 uppercase text-xs tracking-wider">Species</th>
-                         <th className="px-6 py-4 font-bold text-slate-500 uppercase text-xs tracking-wider">Current Price</th>
-                         <th className="px-6 py-4 font-bold text-slate-500 uppercase text-xs tracking-wider">Trend Signal</th>
-                         <th className="px-6 py-4 font-bold text-slate-500 uppercase text-xs tracking-wider">Strength</th>
-                         <th className="px-6 py-4 font-bold text-slate-500 uppercase text-xs tracking-wider">Algorithm Rec.</th>
-                         <th className="px-6 py-4 font-bold text-slate-500 uppercase text-xs tracking-wider text-right">Status</th>
-                      </tr>
-                   </thead>
-                   <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-                      {mockFishTrendSummary.map((fish, i) => (
-                         <tr 
-                            key={fish.code} 
-                            onClick={() => setSelectedSpecies(fish.code)}
-                            className={cn(
-                               "group cursor-pointer transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50",
-                               selectedSpecies === fish.code ? "bg-indigo-50/50 dark:bg-indigo-900/10" : ""
-                            )}
-                         >
-                            <td className="px-6 py-4">
-                               <div className="flex items-center gap-3">
-                                  <div className={cn(
-                                     "w-10 h-10 rounded-xl flex items-center justify-center font-bold text-xs shadow-sm",
-                                     selectedSpecies === fish.code ? "bg-indigo-600 text-white" : "bg-slate-100 dark:bg-slate-800 text-slate-500"
-                                  )}>
-                                     {fish.code}
-                                  </div>
-                                  <div>
-                                     <div className="font-bold text-slate-900 dark:text-slate-100">{fish.name}</div>
-                                     <div className="text-xs text-slate-400">updated 2h ago</div>
-                                  </div>
-                               </div>
-                            </td>
-                            <td className="px-6 py-4">
-                               <div className="font-mono font-medium text-slate-700 dark:text-slate-300">
-                                  LKR 1,240 <span className="text-xs text-slate-400">/kg</span>
-                               </div>
-                            </td>
-                            <td className="px-6 py-4">
-                               <div className={cn("inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-bold ring-1 ring-inset", getTrendBg(fish.trend))}>
-                                  {fish.trend === 'Up' ? <TrendingUp className="w-3.5 h-3.5" /> : <TrendingDown className="w-3.5 h-3.5" />}
-                                  {fish.trend.toUpperCase()}
-                               </div>
-                            </td>
-                            <td className="px-6 py-4">
-                               <div className="w-24 space-y-1">
-                                  <div className="flex justify-between text-[10px] font-bold text-slate-500">
-                                     <span>Signal</span>
-                                     <span>{(fish.confidence * 100).toFixed(0)}%</span>
-                                  </div>
-                                  <Progress value={fish.confidence * 100} className="h-1.5" indicatorClassName={fish.confidence > 0.7 ? "bg-emerald-500" : "bg-amber-500"} />
-                               </div>
-                            </td>
-                            <td className="px-6 py-4">
-                               <Badge className={cn(
-                                  "border-0 font-bold",
-                                  fish.recommendedAction === 'Buy' ? "bg-emerald-500 hover:bg-emerald-600" : 
-                                  fish.recommendedAction === 'Sell' ? "bg-rose-500 hover:bg-rose-600" : "bg-slate-500 hover:bg-slate-600"
-                               )}>
-                                  {fish.recommendedAction} Now
-                               </Badge>
-                            </td>
-                            <td className="px-6 py-4 text-right">
-                               <div className="flex items-center justify-end gap-1.5 text-xs font-medium text-slate-500">
-                                  <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                                  Active
-                               </div>
-                            </td>
-                         </tr>
-                      ))}
-                   </tbody>
-                </table>
+                  <table className="w-full text-sm text-left border-collapse">
+                     <thead>
+                        <tr className="border-b border-slate-100 dark:border-slate-800">
+                           <th className="px-6 py-4 font-bold text-slate-500 uppercase text-xs tracking-wider">Species</th>
+                           {/* Price Column Removed */}
+                           <th className="px-6 py-4 font-bold text-slate-500 uppercase text-xs tracking-wider group cursor-help" title="Forecasted market direction (Up/Down)">
+                              <div className="flex items-center gap-1">
+                                 Trend Signal <Info className="w-3 h-3" />
+                              </div>
+                           </th>
+                           <th className="px-6 py-4 font-bold text-slate-500 uppercase text-xs tracking-wider">Signal Strength</th>
+                           <th className="px-6 py-4 font-bold text-slate-500 uppercase text-xs tracking-wider">Algorithm Rec.</th>
+                           <th className="px-6 py-4 font-bold text-slate-500 uppercase text-xs tracking-wider text-right">Status</th>
+                        </tr>
+                     </thead>
+                     <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+                        {mockFishTrendSummary.map((fish, i) => (
+                           <tr 
+                              key={fish.code} 
+                              onClick={() => setSelectedSpecies(fish.code)}
+                              className={cn(
+                                 "group cursor-pointer transition-colors hover:bg-slate-50 dark:hover:bg-slate-800/50",
+                                 selectedSpecies === fish.code ? "bg-indigo-50/50 dark:bg-indigo-900/10" : ""
+                              )}
+                           >
+                              <td className="px-6 py-4">
+                                 <div className="flex items-center gap-3">
+                                    <div className={cn(
+                                       "w-10 h-10 rounded-xl flex items-center justify-center font-bold text-xs shadow-sm",
+                                       selectedSpecies === fish.code ? "bg-indigo-600 text-white" : "bg-slate-100 dark:bg-slate-800 text-slate-500"
+                                    )}>
+                                       {fish.code}
+                                    </div>
+                                    <div>
+                                       <div className="font-bold text-slate-900 dark:text-slate-100">{fish.name}</div>
+                                       <div className="text-xs text-slate-400">updated 2h ago</div>
+                                    </div>
+                                 </div>
+                              </td>
+                              {/* Price Cell Removed */}
+                              <td className="px-6 py-4">
+                                 <div className={cn("inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-bold ring-1 ring-inset", getTrendBg(fish.trend))}>
+                                    {fish.trend === 'Up' ? <TrendingUp className="w-3.5 h-3.5" /> : <TrendingDown className="w-3.5 h-3.5" />}
+                                    {fish.trend.toUpperCase()}
+                                 </div>
+                              </td>
+                              <td className="px-6 py-4">
+                                 <div className="w-24 space-y-1">
+                                    <div className="flex justify-between text-[10px] font-bold text-slate-500">
+                                       <span>Confidence</span>
+                                       <span>{(fish.confidence * 100).toFixed(0)}%</span>
+                                    </div>
+                                    <Progress value={fish.confidence * 100} className="h-1.5" indicatorClassName={fish.confidence > 0.7 ? "bg-emerald-500" : "bg-amber-500"} />
+                                 </div>
+                              </td>
+                              <td className="px-6 py-4">
+                                 <Badge className={cn(
+                                    "border-0 font-bold",
+                                    fish.recommendedAction === 'Buy' ? "bg-emerald-500 hover:bg-emerald-600" : 
+                                    fish.recommendedAction === 'Sell' ? "bg-rose-500 hover:bg-rose-600" : "bg-slate-500 hover:bg-slate-600"
+                                 )}>
+                                    {fish.recommendedAction} Now
+                                 </Badge>
+                              </td>
+                              <td className="px-6 py-4 text-right">
+                                 <div className="flex items-center justify-end gap-1.5 text-xs font-medium text-slate-500">
+                                    <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                                    Active
+                                 </div>
+                              </td>
+                           </tr>
+                        ))}
+                     </tbody>
+                  </table>
              </div>
          </CardContent>
          <CardFooter className="bg-slate-50 dark:bg-slate-900/40 p-4 border-t border-slate-100 dark:border-slate-800 flex justify-center">

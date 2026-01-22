@@ -75,7 +75,7 @@ export default function TripPlanner() {
 
   // Trip Config State
   const [fuelRate, setFuelRate] = useState("25"); // L/hr base
-  const [selectedHotspots, setSelectedHotspots] = useState<number[]>([0, 1]);
+  const [selectedHotspots, setSelectedHotspots] = useState<number[]>([0]);
   const [selectedHarbor, setSelectedHarbor] =
     useState<keyof typeof HARBORS>("colombo");
 
@@ -84,7 +84,7 @@ export default function TripPlanner() {
   const [currentFuelLevel, setCurrentFuelLevel] = useState("80"); // %
   const [seaCondition, setSeaCondition] = useState("calm"); // calm, choppy, rough
   const [selectedVessel, setSelectedVessel] = useState<string>(""); // Vessel ID
-  const [useRealCalculation, setUseRealCalculation] = useState(false);
+  const [useRealCalculation, setUseRealCalculation] = useState(true);
 
   // API State
   const [vessels, setVessels] = useState<any[]>([]);
@@ -95,7 +95,7 @@ export default function TripPlanner() {
   // Weather State
   const [realWeatherCondition, setRealWeatherCondition] =
     useState<SeaCondition | null>(null);
-  const [useRealWeather, setUseRealWeather] = useState(false);
+  const [useRealWeather, setUseRealWeather] = useState(true);
   const [isLoadingWeather, setIsLoadingWeather] = useState(false);
 
   // Checklist State
@@ -508,69 +508,43 @@ export default function TripPlanner() {
                     </div>
                   </div>
 
-                  <div className="space-y-3 pt-2">
-                    <Label className="text-xs font-semibold uppercase tracking-wider text-slate-500">Navigation Points</Label>
-                     <div className="bg-slate-50 dark:bg-slate-950/50 rounded-lg border border-slate-100 dark:border-slate-800 max-h-48 overflow-y-auto p-2">
-                        {mockHotspots.map((hotspot, idx) => (
-                          <label
-                            key={idx}
-                            className={`flex items-center gap-3 p-2 rounded-md cursor-pointer transition-all mb-1 ${
-                              selectedHotspots.includes(idx)
-                                ? "bg-sky-50 dark:bg-sky-900/20 border border-sky-100 dark:border-sky-800/50"
-                                : "hover:bg-slate-100 dark:hover:bg-slate-800"
-                            }`}
-                          >
-                            <input
-                              type="checkbox"
-                              checked={selectedHotspots.includes(idx)}
-                              onChange={(e) => {
-                                if (e.target.checked) setSelectedHotspots([...selectedHotspots, idx]);
-                                else setSelectedHotspots(selectedHotspots.filter((i) => i !== idx));
-                              }}
-                              className="rounded border-slate-300 text-sky-500 focus:ring-sky-500"
-                            />
-                            <div className="flex-1">
-                               <div className="flex justify-between items-center">
-                                  <span className="text-sm font-medium text-slate-700 dark:text-slate-300">{hotspot.species}</span>
-                                  <Badge variant="outline" className="text-[10px] h-5 bg-white dark:bg-black/20">{(hotspot.probability * 100).toFixed(0)}%</Badge>
-                               </div>
-                            </div>
-                          </label>
-                        ))}
+                  <div className="space-y-3 pt-2 bg-slate-50 dark:bg-slate-900/40 p-3 rounded-xl border border-dashed border-slate-200 dark:border-slate-800">
+                    <div className="flex items-center justify-between">
+                       <Label className="text-xs font-semibold uppercase tracking-wider text-slate-500">Target Destination</Label>
+                       <Badge variant="outline" className="bg-sky-100 text-sky-700 border-sky-200 dark:bg-sky-900/30 dark:text-sky-400 dark:border-sky-800 text-[10px]">
+                          IMPORTED FROM MAP
+                       </Badge>
+                    </div>
+                     <div className="bg-white dark:bg-slate-950 rounded-lg border border-slate-200 dark:border-slate-800 p-3 shadow-sm relative overflow-hidden group">
+                        <div className="absolute top-0 left-0 w-1 h-full bg-sky-500"></div>
+                        {/* Hardcoded Destination Display */}
+                        {(() => {
+                           const hotspot = mockHotspots[0]; // Hardcoded [0]
+                           const harbor = HARBORS[selectedHarbor];
+                           const dist = calculateGeoDistance(harbor.lat, harbor.lng, hotspot.lat, hotspot.lng);
+                           return (
+                              <div className="flex justify-between items-center pl-2">
+                                 <div>
+                                    <div className="flex items-center gap-2">
+                                       <span className="text-sm font-bold text-slate-900 dark:text-white">{hotspot.species} Ground</span>
+                                       <Badge className="bg-emerald-500 text-white text-[10px] h-4 px-1">High Prob.</Badge>
+                                    </div>
+                                    <div className="flex items-center gap-2 mt-1 text-xs text-slate-500 font-mono">
+                                       <span className="flex items-center gap-1"><MapPin className="w-3 h-3" /> {hotspot.lat.toFixed(4)}, {hotspot.lng.toFixed(4)}</span>
+                                    </div>
+                                    <div className="mt-2 text-sky-600 dark:text-sky-400 text-xs font-bold flex items-center gap-1">
+                                       <Navigation className="w-3 h-3" />
+                                       {dist.toFixed(1)} km from {HARBORS[selectedHarbor].name}
+                                    </div>
+                                 </div>
+                              </div>
+                           );
+                        })()}
                      </div>
                   </div>
 
-                  <div className="space-y-3 pt-4 border-t border-slate-100 dark:border-slate-800">
-                    <Label className="text-xs font-semibold uppercase tracking-wider text-slate-500">Advanced Data</Label>
-                    <div className="grid gap-2">
-                       <Button 
-                         variant="outline" 
-                         className={`justify-between ${useRealCalculation ? 'bg-sky-50 dark:bg-sky-900/20 border-sky-200 dark:border-sky-800 text-sky-700 dark:text-sky-300' : 'text-slate-600 dark:text-slate-400'}`}
-                         onClick={() => setUseRealCalculation(!useRealCalculation)}
-                       >
-                         <div className="flex items-center gap-2">
-                            <Calculator className="h-4 w-4" />
-                            <span>Fuel Calculator</span>
-                         </div>
-                         <div className={`w-8 h-4 rounded-full p-0.5 transition-colors ${useRealCalculation ? 'bg-sky-500' : 'bg-slate-300 dark:bg-slate-700'}`}>
-                            <div className={`w-3 h-3 rounded-full bg-white shadow-sm transition-transform ${useRealCalculation ? 'translate-x-4' : 'translate-x-0'}`} />
-                         </div>
-                       </Button>
-
-                       <Button 
-                         variant="outline" 
-                         className={`justify-between ${useRealWeather ? 'bg-sky-50 dark:bg-sky-900/20 border-sky-200 dark:border-sky-800 text-sky-700 dark:text-sky-300' : 'text-slate-600 dark:text-slate-400'}`}
-                         onClick={() => setUseRealWeather(!useRealWeather)}
-                       >
-                         <div className="flex items-center gap-2">
-                            <Wind className="h-4 w-4" />
-                            <span>Live Weather Data</span>
-                         </div>
-                         <div className={`w-8 h-4 rounded-full p-0.5 transition-colors ${useRealWeather ? 'bg-sky-500' : 'bg-slate-300 dark:bg-slate-700'}`}>
-                            <div className={`w-3 h-3 rounded-full bg-white shadow-sm transition-transform ${useRealWeather ? 'translate-x-4' : 'translate-x-0'}`} />
-                         </div>
-                       </Button>
-                    </div>
+                  <div className="hidden">
+                    {/* Advanced Data Section Removed as per request (Always ON) */}
                   </div>
                </CardContent>
             </Card>
@@ -646,6 +620,23 @@ export default function TripPlanner() {
                          </div>
 
                          <div className="grid grid-cols-2 gap-4">
+                            {/* NEW: Total Trip Distance Prominent Display */}
+                            <div className="col-span-2 p-4 bg-sky-50/50 dark:bg-sky-900/20 rounded-xl border border-sky-100 dark:border-sky-800 flex items-center justify-between group-hover:border-sky-200 dark:group-hover:border-sky-700/50 transition-colors">
+                               <div>
+                                  <div className="flex items-center gap-2 text-xs font-bold text-sky-600 dark:text-sky-400 uppercase tracking-widest mb-1">
+                                    <MapPin className="w-3 h-3" />
+                                    Total Trip Distance
+                                  </div>
+                                  <div className="text-4xl font-black text-slate-900 dark:text-white tracking-tight">
+                                    {baseDistance.toFixed(1)} 
+                                    <span className="text-lg text-slate-400 font-bold ml-1">km</span>
+                                  </div>
+                               </div>
+                               <div className="h-10 w-10 rounded-full bg-sky-100 dark:bg-sky-900 flex items-center justify-center">
+                                  <Navigation className="h-5 w-5 text-sky-600 dark:text-sky-400" />
+                               </div>
+                            </div>
+
                             <div className="p-3 bg-slate-50 dark:bg-slate-950/50 rounded-lg border border-slate-100 dark:border-slate-800">
                                <div className="text-[10px] text-slate-400 font-bold uppercase mb-1">Max Range</div>
                                <div className="text-2xl font-black text-slate-900 dark:text-white">{maxRange.toFixed(0)} <span className="text-sm text-slate-400 font-normal">km</span></div>
@@ -786,6 +777,20 @@ export default function TripPlanner() {
       </div>
     </div>
   );
+}
+
+function calculateGeoDistance(lat1: number, lon1: number, lat2: number, lon2: number) {
+  const R = 6371; // km
+  const dLat = (lat2 - lat1) * (Math.PI / 180);
+  const dLon = (lon2 - lon1) * (Math.PI / 180);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * (Math.PI / 180)) *
+      Math.cos(lat2 * (Math.PI / 180)) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
 }
 
 // Helper icon component

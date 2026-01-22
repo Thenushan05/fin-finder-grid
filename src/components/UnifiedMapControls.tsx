@@ -186,15 +186,16 @@ export default function UnifiedMapControls({ mapRef }: Props) {
   };
 
 
+
   // --- Jaffna Prediction Logic ---
-  async function runPrediction() {
+  async function runPrediction(customBbox?: typeof JAFFNA_BBOX) {
     setLoading(true);
     const body = {
       date: null,
       species,
       threshold,
       top_k: 200,
-      bbox: JAFFNA_BBOX,
+      bbox: customBbox || JAFFNA_BBOX,
       overrides: {},
     };
 
@@ -241,6 +242,12 @@ export default function UnifiedMapControls({ mapRef }: Props) {
         map.on("mouseenter", "fishHotspots-layer", () => (map.getCanvas().style.cursor = "pointer"));
         map.on("mouseleave", "fishHotspots-layer", () => (map.getCanvas().style.cursor = ""));
       }
+      
+      // If we used a custom bbox (from "Scan Hotspot"), fly to it?
+      if (customBbox) {
+          // Optional: Provide visual feedback or bounds fit
+      }
+
     } catch (err) {
       console.error("Prediction failed", err);
       showError("Prediction failed: " + String(err));
@@ -248,6 +255,9 @@ export default function UnifiedMapControls({ mapRef }: Props) {
       setLoading(false);
     }
   }
+
+  // Track selected ground
+  const [selectedGroundId, setSelectedGroundId] = useState<string | null>(null);
 
   return (
     <div className={`absolute top-6 left-6 w-96 transition-all duration-300 ease-in-out z-30 font-sans ${isExpanded ? 'bg-slate-900/95 backdrop-blur-md shadow-2xl border border-slate-700/50 rounded-2xl' : 'bg-transparent pointer-events-none'}`}>
@@ -316,7 +326,7 @@ export default function UnifiedMapControls({ mapRef }: Props) {
 
 
                   <button
-                    onClick={runPrediction}
+                    onClick={() => runPrediction()}
                     disabled={loading}
                     className="w-full bg-emerald-500 hover:bg-emerald-400 text-slate-900 font-bold py-2.5 rounded-lg transition-all shadow-lg shadow-emerald-500/20 text-sm flex items-center justify-center gap-2 mt-2"
                   >
@@ -391,21 +401,50 @@ export default function UnifiedMapControls({ mapRef }: Props) {
               </div>
               
               {showRegularGrounds && (
-                <div className="max-h-40 overflow-y-auto pr-1 space-y-1 custom-scrollbar">
-                   {mockRegularGrounds.map(g => (
+                <div className="max-h-56 overflow-y-auto pr-1 space-y-1 custom-scrollbar">
+                   {mockRegularGrounds.map(g => {
+                     const isSelected = selectedGroundId === g.id;
+                     return (
                      <div 
                        key={g.id} 
-                       className="flex items-center justify-between p-2 rounded-lg hover:bg-slate-800/50 cursor-pointer group transition-colors"
+                       className={`flex flex-col p-2 rounded-lg cursor-pointer group transition-all duration-200 ${isSelected ? 'bg-slate-800 border border-emerald-500/30' : 'hover:bg-slate-800/50 border border-transparent'}`}
                        onClick={() => {
+                          setSelectedGroundId(g.id);
                           if(mapRef.current) {
                             mapRef.current.flyTo({ center: [g.lng, g.lat], zoom: 12 });
                           }
                        }}
                      >
-                        <span className="text-xs text-slate-300 group-hover:text-emerald-400 transition-colors">{g.name}</span>
-                        <div className={`h-2 w-2 rounded-full ${g.predictionLevel === 'Good' ? 'bg-green-500' : g.predictionLevel === 'Moderate' ? 'bg-yellow-500' : 'bg-red-500'}`} />
+                        <div className="flex items-center justify-between w-full">
+                            <span className={`text-xs transition-colors ${isSelected ? 'text-emerald-400 font-bold' : 'text-slate-300 group-hover:text-emerald-400'}`}>{g.name}</span>
+                            <div className={`h-2 w-2 rounded-full ${g.predictionLevel === 'Good' ? 'bg-green-500' : g.predictionLevel === 'Moderate' ? 'bg-yellow-500' : 'bg-red-500'}`} />
+                        </div>
+                        
+                        {isSelected && (
+                            <div className="mt-3 animate-in slide-in-from-top-1 fade-in duration-200">
+                                <button
+                                    onClick={(e) => {
+                                        e.stopPropagation();
+                                        // Create a focused bbox around the ground
+                                        const padding = 0.15;
+                                        const bbox = {
+                                            min_lat: g.lat - padding,
+                                            max_lat: g.lat + padding,
+                                            min_lon: g.lng - padding,
+                                            max_lon: g.lng + padding,
+                                        };
+                                        runPrediction(bbox);
+                                    }}
+                                    className="w-full bg-emerald-500/10 hover:bg-emerald-500/20 text-emerald-400 border border-emerald-500/30 text-[10px] uppercase font-bold py-1.5 rounded flex items-center justify-center gap-2 transition-colors"
+                                >
+                                    <Waves className="h-3 w-3" />
+                                    Scan Hotspot
+                                </button>
+                            </div>
+                        )}
                      </div>
-                   ))}
+                   );
+                   })}
                 </div>
               )}
 
