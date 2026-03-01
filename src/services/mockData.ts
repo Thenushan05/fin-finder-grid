@@ -32,6 +32,7 @@ export interface HotspotData {
   depth: number;
   sst: number;
   chl: number;
+  isSpawningArea?: boolean;
 }
 
 export const mockSpecies: FishSpecies[] = [
@@ -83,6 +84,54 @@ export const mockSpecies: FishSpecies[] = [
     sustainabilityStatus: "Moderate",
     description: "Coastal pelagic fish popular in regional markets.",
   },
+  {
+    id: "swo",
+    name: "Swordfish",
+    scientificName: "Xiphias gladius",
+    code: "SWO",
+    habitatDepth: { min: 200, max: 600 },
+    sstRange: { min: 18, max: 28 },
+    spawningMonths: [2, 3, 4, 5],
+    recommendedGear: ["longline"],
+    sustainabilityStatus: "Moderate",
+    description: "Highly oceanic, caught mostly at night using deep longlines.",
+  },
+  {
+    id: "mahi",
+    name: "Mahi Mahi",
+    scientificName: "Coryphaena hippurus",
+    code: "MAHI",
+    habitatDepth: { min: 0, max: 80 },
+    sstRange: { min: 21, max: 30 },
+    spawningMonths: [1, 2, 3, 4, 11, 12],
+    recommendedGear: ["trolling", "longline"],
+    sustainabilityStatus: "Good",
+    description: "Fast-growing surface dweller often found near floating objects.",
+  },
+  {
+    id: "bum",
+    name: "Blue Marlin",
+    scientificName: "Makaira nigricans",
+    code: "BUM",
+    habitatDepth: { min: 0, max: 200 },
+    sstRange: { min: 22, max: 31 },
+    spawningMonths: [6, 7, 8, 9],
+    recommendedGear: ["trolling", "longline"],
+    sustainabilityStatus: "At Risk",
+    description: "Highly prized sportfish and commercial byproduct. Often catch-and-release.",
+  },
+  {
+    id: "sax",
+    name: "Sailfish",
+    scientificName: "Istiophorus platypterus",
+    code: "SAX",
+    habitatDepth: { min: 0, max: 100 },
+    sstRange: { min: 25, max: 30 },
+    spawningMonths: [4, 5, 6, 7, 8],
+    recommendedGear: ["trolling", "gillnet"],
+    sustainabilityStatus: "Moderate",
+    description: "Fastest fish in the ocean, common in coastal and offshore waters.",
+  },
 ];
 
 export const mockGear: GearType[] = [
@@ -129,11 +178,29 @@ export const mockGear: GearType[] = [
 ];
 
 export const mockHotspots: HotspotData[] = [
-  { lat: 6.2, lng: 81.8, probability: 0.85, species: "YFT", depth: 180, sst: 28.5, chl: 0.3 }, // Bay of Bengal - East of Sri Lanka
-  { lat: 8.5, lng: 82.5, probability: 0.72, species: "SKJ", depth: 120, sst: 29.1, chl: 0.4 }, // Bay of Bengal - Northeast
-  { lat: 5.5, lng: 80.5, probability: 0.68, species: "BET", depth: 250, sst: 26.8, chl: 0.2 }, // Indian Ocean - South
-  { lat: 7.8, lng: 83.2, probability: 0.91, species: "YFT", depth: 200, sst: 28.9, chl: 0.35 }, // Bay of Bengal - East
-  { lat: 6.5, lng: 79.2, probability: 0.76, species: "COM", depth: 45, sst: 29.5, chl: 0.5 }, // Laccadive Sea - West
+  // 5 Hotspots in the Northern side of Sri Lanka (fishing boundaries)
+  { lat: 9.9, lng: 80.0, probability: 0.95, species: "YFT", depth: 180, sst: 28.5, chl: 0.3 }, // North (Jaffna / Palk Strait edge)
+  { lat: 9.7, lng: 80.6, probability: 0.99, species: "SKJ", depth: 120, sst: 29.1, chl: 0.4 }, // North East
+  { lat: 9.4, lng: 80.8, probability: 0.95, species: "SKJ", depth: 150, sst: 28.8, chl: 0.38 }, // North center -> Adjusted East to Ocean
+  { lat: 9.1, lng: 79.5, probability: 0.79, species: "YFT", depth: 200, sst: 28.9, chl: 0.35 }, // North West (Mannar side)
+  { lat: 9.0, lng: 80.9, probability: 0.95, species: "BET", depth: 250, sst: 26.8, chl: 0.2 }, // North East (Mullaittivu side)
+  
+  // 5 Hotspots in other zones
+  { lat: 7.0, lng: 82.2, probability: 0.88, species: "YFT", depth: 180, sst: 28.5, chl: 0.3 }, // East (Off Batticaloa)
+  { lat: 7.8, lng: 82.0, probability: 0.92, species: "SKJ", depth: 120, sst: 29.1, chl: 0.4 }, // East (Off Kalkudah)
+  { lat: 5.5, lng: 80.0, probability: 0.85, species: "COM", depth: 45, sst: 29.5, chl: 0.5 }, // Deep South
+  { lat: 6.5, lng: 79.4, probability: 0.76, species: "YFT", depth: 150, sst: 28.9, chl: 0.35 }, // South West (Off Galle)
+  { lat: 7.0, lng: 79.3, probability: 0.81, species: "COM", depth: 60, sst: 29.2, chl: 0.45 }, // West (Off Colombo)
+  
+  // 3 New Moderate Confidence Hotspots in North East (spread out towards boundary)
+  { lat: 10.2, lng: 81.5, probability: 0.65, species: "YFT", depth: 460, sst: 28.6, chl: 0.35 }, // Moderate North East 1
+  { lat: 9.8, lng: 81.8, probability: 0.55, species: "COM", depth: 310, sst: 29.0, chl: 0.4 },  // Moderate North East 2
+  { lat: 8.5, lng: 82.1, probability: 0.61, species: "SKJ", depth: 580, sst: 28.7, chl: 0.38 }, // Moderate North East 3
+  
+  // 3 Spawning Warnings (spread out towards boundary)
+  { lat: 9.5, lng: 79.6, probability: 0.20, species: "BET", depth: 250, sst: 26.8, chl: 0.2, isSpawningArea: true }, // North West Spawning Area
+  { lat: 10.5, lng: 81.2, probability: 0.15, species: "SKJ", depth: 1200, sst: 27.5, chl: 0.1, isSpawningArea: true }, // Deep North East Spawning Area 1
+  { lat: 9.1, lng: 81.9, probability: 0.25, species: "YFT", depth: 820, sst: 27.1, chl: 0.3, isSpawningArea: true }, // Deep North East Spawning Area 2
 ];
 
 export const mockPriceData = [
@@ -382,15 +449,34 @@ export const mockFishTrendSummary = [
   { code: "BET", name: "Bigeye Tuna", trend: "Stable", confidence: 0.81, recommendedAction: "Hold" },
   { code: "SKJ", name: "Skipjack Tuna", trend: "Down", confidence: 0.76, recommendedAction: "Wait" },
   { code: "COM", name: "Seer Fish", trend: "Up", confidence: 0.88, recommendedAction: "Buy" },
+  { code: "SWO", name: "Swordfish", trend: "Stable", confidence: 0.70, recommendedAction: "Hold" },
+  { code: "MAHI", name: "Mahi Mahi", trend: "Up", confidence: 0.85, recommendedAction: "Buy" },
+  { code: "BUM", name: "Blue Marlin", trend: "Down", confidence: 0.65, recommendedAction: "Sell" },
+  { code: "SAX", name: "Sailfish", trend: "Stable", confidence: 0.72, recommendedAction: "Hold" },
 ];
 
 // 11. Next Week Forecast (Multi-Species Line Chart)
 export const mockSpeciesForecast = [
-  { day: "Mon", YFT: 100, BET: 100, SKJ: 100, COM: 100 }, // Baseline start
-  { day: "Tue", YFT: 102, BET: 98, SKJ: 101, COM: 105 },
-  { day: "Wed", YFT: 105, BET: 96, SKJ: 99, COM: 108 },
-  { day: "Thu", YFT: 104, BET: 97, SKJ: 95, COM: 112 },
-  { day: "Fri", YFT: 108, BET: 95, SKJ: 92, COM: 115 },
-  { day: "Sat", YFT: 110, BET: 94, SKJ: 90, COM: 114 },
-  { day: "Sun", YFT: 112, BET: 95, SKJ: 88, COM: 110 },
+  { day: "Mon", YFT: 100, BET: 100, SKJ: 100, COM: 100, SWO: 100, MAHI: 100, BUM: 100, SAX: 100 },
+  { day: "Tue", YFT: 115, BET: 85, SKJ: 112, COM: 108, SWO: 102, MAHI: 118, BUM: 95, SAX: 105 },
+  { day: "Wed", YFT: 92, BET: 108, SKJ: 95, COM: 122, SWO: 105, MAHI: 105, BUM: 92, SAX: 108 },
+  { day: "Thu", YFT: 112, BET: 96, SKJ: 108, COM: 105, SWO: 100, MAHI: 125, BUM: 88, SAX: 112 },
+  { day: "Fri", YFT: 125, BET: 82, SKJ: 120, COM: 118, SWO: 108, MAHI: 95, BUM: 85, SAX: 115 },
+  { day: "Sat", YFT: 105, BET: 98, SKJ: 102, COM: 102, SWO: 110, MAHI: 130, BUM: 82, SAX: 105 },
+  { day: "Sun", YFT: 118, BET: 90, SKJ: 115, COM: 120, SWO: 112, MAHI: 115, BUM: 80, SAX: 110 },
 ];
+
+export const mockSpeciesForecast30d = Array.from({ length: 30 }, (_, i) => {
+  const dayNum = i + 1;
+  return {
+    day: `D${dayNum}`,
+    YFT: 100 + Math.floor(Math.random() * 60 - 20) + (i * 1.5), 
+    BET: 100 + Math.floor(Math.random() * 50 - 25) - (i * 0.5), 
+    SKJ: 100 + Math.floor(Math.random() * 70 - 35),             
+    COM: 100 + Math.floor(Math.random() * 40 - 15) + (i * 2),   
+    SWO: 100 + Math.floor(Math.random() * 30 - 15) + (i * 0.5), 
+    MAHI: 100 + Math.floor(Math.random() * 80 - 40) + (i * 1.5), 
+    BUM: 100 + Math.floor(Math.random() * 40 - 25) - (i * 1),   
+    SAX: 100 + Math.floor(Math.random() * 50 - 20) + (i * 1),   
+  };
+});

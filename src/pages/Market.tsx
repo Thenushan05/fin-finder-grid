@@ -3,7 +3,7 @@ import { useState } from "react";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ResponsiveContainer,
   BarChart, Bar, Cell, PieChart, Pie, Radar, RadarChart,
-  PolarGrid, PolarAngleAxis, PolarRadiusAxis, Legend, AreaChart, Area
+  PolarGrid, PolarAngleAxis, PolarRadiusAxis, Legend, AreaChart, Area, ReferenceLine
 } from "recharts";
 import {
   Tooltip,
@@ -21,6 +21,7 @@ import {
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuCheckboxItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { Progress } from "@/components/ui/progress";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -31,16 +32,39 @@ import {
   mockFishTrendSummary,
   mockFestivalAlerts,
   mockSpeciesForecast,
+  mockSpeciesForecast30d,
   getCurrentMonsoon
 } from "@/services/mockData";
 import { format } from "date-fns";
 import { useTheme } from "next-themes";
 import { cn } from "@/lib/utils";
+import { useToast } from "@/hooks/use-toast";
 
 export default function Market() {
   const { theme } = useTheme();
   const isDark = theme === "dark";
+  const { toast } = useToast();
   const [selectedSpecies, setSelectedSpecies] = useState<string>("YFT");
+  const [timeScale, setTimeScale] = useState<"7d" | "30d">("7d");
+  const [selectedForecastSpecies, setSelectedForecastSpecies] = useState<string[]>(["YFT"]);
+
+  const handleForecastSpeciesChange = (code: string) => {
+    setSelectedForecastSpecies(prev => {
+      if (prev.includes(code)) {
+        if (prev.length === 1) return prev; // Keep at least one
+        return prev.filter(s => s !== code);
+      }
+      if (prev.length >= 5) {
+        toast({
+          title: "Selection Limit Reached",
+          description: "You can only select up to 5 species at a time to keep the chart readable.",
+          variant: "destructive"
+        });
+        return prev; // Max 5 selections
+      }
+      return [...prev, code];
+    });
+  };
 
   const currentSpecies = mockSpecies.find(s => s.code === selectedSpecies) || mockSpecies[0];
   const currentTrend = mockFishTrendSummary.find(f => f.code === selectedSpecies) || mockFishTrendSummary[0];
@@ -207,19 +231,28 @@ export default function Market() {
                      <CardDescription>Projected relative value index (Baseline 100)</CardDescription>
                    </div>
                    <div className="flex items-center gap-2">
-                       <Select value={selectedSpecies} onValueChange={setSelectedSpecies}>
-                        <SelectTrigger className="h-8 w-[110px] text-xs font-bold border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
+                       <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button variant="outline" className="h-8 w-[120px] text-xs font-bold border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 justify-between">
+                            {selectedForecastSpecies.length} Species
+                            <ChevronRight className="h-4 w-4 opacity-50 rotate-90" />
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent className="w-56 max-h-[300px] overflow-y-auto">
                           {mockSpecies.map((species) => (
-                            <SelectItem key={species.id} value={species.code} className="text-xs">
-                              {species.code}
-                            </SelectItem>
+                            <DropdownMenuCheckboxItem
+                              key={species.id}
+                              checked={selectedForecastSpecies.includes(species.code)}
+                              onCheckedChange={() => handleForecastSpeciesChange(species.code)}
+                              onSelect={(e) => e.preventDefault()}
+                              className="text-xs font-bold cursor-pointer"
+                            >
+                              {species.name} ({species.code})
+                            </DropdownMenuCheckboxItem>
                           ))}
-                        </SelectContent>
-                      </Select>
-                       <Tabs defaultValue="7d" className="w-auto">
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                       <Tabs defaultValue="7d" className="w-auto" onValueChange={(val) => setTimeScale(val as "7d" | "30d")}>
                           <TabsList className="grid w-full grid-cols-2 h-8">
                             <TabsTrigger value="7d" className="text-xs h-6 px-2">7D</TabsTrigger>
                             <TabsTrigger value="30d" className="text-xs h-6 px-2">30D</TabsTrigger>
@@ -227,57 +260,97 @@ export default function Market() {
                        </Tabs>
                    </div>
                 </CardHeader>
-                <CardContent className="h-[320px] w-full pt-4">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart data={mockSpeciesForecast} margin={{ top: 10, right: 10, left: 15, bottom: 0 }}>
-                      <defs>
-                        <linearGradient id="colorYFT" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor={colors.primary} stopOpacity={0.3}/>
-                          <stop offset="95%" stopColor={colors.primary} stopOpacity={0}/>
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={colors.grid} />
-                      <XAxis 
-                        dataKey="day" 
-                        axisLine={false} 
-                        tickLine={false} 
-                        tick={{ fill: colors.subText, fontSize: 11, fontWeight: 500 }} 
-                        dy={10}
-                      />
-                      <YAxis 
-                        axisLine={false} 
-                        tickLine={false} 
-                        tick={{ fill: colors.subText, fontSize: 11 }} 
-                        tickFormatter={(value) => `${value}%`}
-                        label={{ 
-                           value: 'Price %', 
-                           angle: -90, 
-                           position: 'insideLeft', 
-                           style: { textAnchor: 'middle', fill: colors.subText, fontSize: 10 } 
-                        }}
-                      />
-                      <RechartsTooltip 
-                         contentStyle={{
-                            backgroundColor: colors.cardBg,
-                            borderColor: colors.grid,
-                            borderRadius: '12px',
-                            boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
-                            color: colors.text
-                         }}
-                         itemStyle={{ color: colors.text }} // Fix for text visibility in tooltip
-                         cursor={{ stroke: colors.grid, strokeWidth: 2 }}
-                      />
-                      <Area 
-                        type="monotone" 
-                        dataKey={selectedSpecies} 
-                        stroke={colors.primary} 
-                        strokeWidth={4} 
-                        fillOpacity={1} 
-                        fill="url(#colorYFT)" 
-                        activeDot={{ r: 8, strokeWidth: 0, fill: colors.primary }}
-                      />
-                    </AreaChart>
-                  </ResponsiveContainer>
+                <CardContent className="h-[320px] w-full pt-4 relative">
+                  {(() => {
+                    const activeData = timeScale === "7d" ? mockSpeciesForecast : mockSpeciesForecast30d;
+                    const mainSpecies = selectedForecastSpecies[0] || "YFT";
+                    const firstValue = activeData[0][mainSpecies as keyof typeof activeData[0]] as number;
+                    const lastValue = activeData[activeData.length - 1][mainSpecies as keyof typeof activeData[0]] as number;
+                    const isIncrease = lastValue >= firstValue;
+                    const percentageDiff = firstValue > 0 ? ((lastValue - firstValue) / firstValue * 100) : 0;
+                    const percentageChange = percentageDiff.toFixed(1);
+                    const lineColor = isIncrease ? "#10b981" : "#f43f5e";
+                    
+                    return (
+                      <>
+                        {selectedForecastSpecies.length === 1 && (
+                          <div className={cn(
+                            "absolute top-6 right-6 flex items-center gap-1.5 px-3 py-1.5 rounded-full z-10 border shadow-sm backdrop-blur-sm",
+                            isIncrease ? "bg-emerald-500/10 border-emerald-500/20" : "bg-rose-500/10 border-rose-500/20"
+                          )}>
+                             {isIncrease ? <TrendingUp className="w-4 h-4 text-emerald-500" /> : <TrendingDown className="w-4 h-4 text-rose-500" />}
+                             <span className={cn("font-bold text-sm", isIncrease ? "text-emerald-500" : "text-rose-500")}>
+                               {isIncrease ? '+' : ''}{percentageChange}%
+                             </span>
+                          </div>
+                        )}
+                        <ResponsiveContainer width="100%" height="100%">
+                          <LineChart data={activeData} margin={{ top: 20, right: 10, left: 15, bottom: 0 }}>
+                            <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={colors.grid} />
+                            <ReferenceLine 
+                              y={100} 
+                              stroke="#f43f5e" 
+                              strokeDasharray="4 4" 
+                              opacity={0.7}
+                              label={{ position: 'insideTopLeft', value: 'Baseline (100)', fill: '#f43f5e', fontSize: 10, fontWeight: 'bold', offset: 10 }} 
+                            />
+                            <XAxis 
+                              dataKey="day" 
+                              axisLine={false} 
+                              tickLine={false} 
+                              tick={{ fill: colors.subText, fontSize: 11, fontWeight: 500 }} 
+                              dy={10}
+                            />
+                            <YAxis 
+                              axisLine={false} 
+                              tickLine={false} 
+                              tick={{ fill: colors.subText, fontSize: 11 }} 
+                              tickFormatter={(value) => `${value}%`}
+                              label={{ 
+                                 value: 'Price %', 
+                                 angle: -90, 
+                                 position: 'insideLeft', 
+                                 style: { textAnchor: 'middle', fill: colors.subText, fontSize: 10 } 
+                              }}
+                            />
+                            <RechartsTooltip 
+                               contentStyle={{
+                                  backgroundColor: colors.cardBg,
+                                  borderColor: colors.grid,
+                                  borderRadius: '12px',
+                                  boxShadow: '0 4px 6px -1px rgba(0, 0, 0, 0.1)',
+                                  color: colors.text
+                               }}
+                               itemStyle={{ color: colors.text }}
+                               cursor={{ stroke: colors.grid, strokeWidth: 2, strokeDasharray: "4 4" }}
+                            />
+                            <Legend verticalAlign="top" height={36} iconType="circle" wrapperStyle={{ fontSize: '11px', fontWeight: 'bold', paddingBottom: '10px' }} />
+                            {selectedForecastSpecies.map((species, index) => {
+                              const chartColors = [
+                                "#10b981", // Emerald
+                                "#3b82f6", // Blue
+                                "#f59e0b", // Amber
+                                "#ec4899", // Pink
+                                "#8b5cf6", // Violet
+                              ];
+                              const lineColor = chartColors[index % chartColors.length];
+                              return (
+                                <Line 
+                                  key={species}
+                                  type="monotone" 
+                                  dataKey={species} 
+                                  stroke={lineColor} 
+                                  strokeWidth={4} 
+                                  dot={{ r: 4, fill: colors.cardBg, strokeWidth: 2 }}
+                                  activeDot={{ r: 8, strokeWidth: 0, fill: lineColor }}
+                                />
+                              );
+                            })}
+                          </LineChart>
+                        </ResponsiveContainer>
+                      </>
+                    );
+                  })()}
                 </CardContent>
               </Card>
 
@@ -317,11 +390,18 @@ export default function Market() {
                                return null;
                             }}
                          />
-                         <Bar dataKey="price" radius={[0, 4, 4, 0]} barSize={24} animationDuration={1000}>
-                           {predictedPrices.map((entry, index) => (
-                             <Cell key={`cell-${index}`} fill={index === 0 ? colors.primary : colors.neutral} />
-                           ))}
-                         </Bar>
+                           <Bar dataKey="price" radius={[0, 4, 4, 0]} barSize={24} animationDuration={1000}>
+                             {predictedPrices.map((entry, index) => {
+                               const barColors = [
+                                 "#6366f1", // Indigo
+                                 "#10b981", // Emerald
+                                 "#f59e0b", // Amber
+                                 "#3b82f6", // Blue
+                                 "#ec4899"  // Pink
+                               ];
+                               return <Cell key={`cell-${index}`} fill={barColors[index % barColors.length]} />;
+                             })}
+                           </Bar>
                       </BarChart>
                     </ResponsiveContainer>
                   </div>
