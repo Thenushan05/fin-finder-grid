@@ -28,11 +28,6 @@ import {
   Flag,
 } from "lucide-react";
 import { WiDaySunny, WiCloud, WiStrongWind, WiRaindrops } from "react-icons/wi";
-import {
-  mockHotspots,
-  mockWeatherHazards,
-  type WeatherHazard,
-} from "@/services/mockData";
 import { fetchOpenMeteo, type OpenMeteoResult } from "@/services/openMeteo";
 import {
   fetchMarineData,
@@ -42,6 +37,7 @@ import {
 import {
   calculateHazardLevel,
   type HazardResult,
+  type WeatherHazard,
 } from "@/lib/hazardClassification";
 import { useState, useEffect, useMemo, useCallback } from "react";
 import type { MouseEvent as ReactMouseEvent } from "react";
@@ -650,7 +646,12 @@ export default function HotspotMap() {
     setPendingManualDestination(dest);
   };
 
-  const handleHotspotSelect = (hotspot: (typeof mockHotspots)[0]) => {
+  const handleHotspotSelect = (hotspot: {
+    lat: number;
+    lng: number;
+    species?: string;
+    probability?: number;
+  }) => {
     setSelectedHotspot(hotspot);
     setManualDestination(null);
     setViewState({
@@ -1792,108 +1793,6 @@ export default function HotspotMap() {
                   <span className="relative inline-flex rounded-full h-4 w-4 bg-blue-500 border-2 border-white"></span>
                 </div>
               </Marker>
-            )}
-
-            {/* Hotspot Markers */}
-            {mockHotspots.map((hotspot, idx) => (
-              <Marker
-                key={idx}
-                longitude={hotspot.lng}
-                latitude={hotspot.lat}
-                anchor="bottom"
-                onClick={(e) => {
-                  e.originalEvent.stopPropagation();
-                  handleHotspotSelect(hotspot);
-                }}
-              >
-                <div
-                  title={
-                    hotspot.isSpawningArea
-                      ? "Spawning Area Warning"
-                      : `${hotspot.species} Hotspot - ${(hotspot.probability * 100).toFixed(0)}% probability`
-                  }
-                  className="flex flex-col items-center cursor-pointer group"
-                  style={{ zIndex: hotspot.isSpawningArea ? 10 : 5 }}
-                >
-                  <div
-                    className={`relative px-3 py-2 rounded-full border-[3px] border-white shadow-xl flex flex-col items-center justify-center transition-transform duration-200 group-hover:scale-110 ${
-                      hotspot.isSpawningArea
-                        ? "bg-red-500"
-                        : hotspot.probability < 0.75
-                          ? "bg-amber-500"
-                          : "bg-[#1e9c5a]"
-                    } ${
-                      selectedHotspot === hotspot && !manualDestination
-                        ? "scale-110 ring-4 ring-primary/30"
-                        : ""
-                    }`}
-                  >
-                    <span className="text-[8px] font-bold text-white leading-none uppercase tracking-wider mb-1 opacity-90 flex items-center gap-1">
-                      {hotspot.isSpawningArea ? (
-                        <>
-                          <AlertTriangle className="w-3 h-3 text-white" />
-                          Danger Zone
-                        </>
-                      ) : (
-                        "Confidence"
-                      )}
-                    </span>
-                    <span
-                      className={`text-[1.2rem] font-extrabold text-white leading-none tracking-tight ${hotspot.isSpawningArea ? "text-[1rem]" : ""}`}
-                    >
-                      {hotspot.isSpawningArea
-                        ? "SPAWNING"
-                        : `${(hotspot.probability * 100).toFixed(0)}%`}
-                    </span>
-
-                    {/* The pointer tail outer (white border) shadow works on the bubble but we need it on the tail too */}
-                    <div className="absolute -bottom-[12px] left-1/2 -translate-x-1/2 w-0 h-0 border-l-[10px] border-l-transparent border-r-[10px] border-r-transparent border-t-[14px] border-t-white drop-shadow-md"></div>
-                    {/* The pointer tail inner (colored) */}
-                    <div
-                      className={`absolute -bottom-[8px] left-1/2 -translate-x-1/2 w-0 h-0 border-l-[7px] border-l-transparent border-r-[7px] border-r-transparent border-t-[10px] ${hotspot.isSpawningArea ? "border-t-red-500" : hotspot.probability < 0.75 ? "border-t-amber-500" : "border-t-[#1e9c5a]"}`}
-                    ></div>
-                  </div>
-                </div>
-              </Marker>
-            ))}
-
-            {/* Selected Hotspot Popup (only when a hotspot is selected and not manual destination) */}
-            {!manualDestination && selectedHotspot && (
-              <Popup
-                className="mapbox-popup"
-                longitude={selectedHotspot.lng}
-                latitude={selectedHotspot.lat}
-                anchor="top"
-                closeButton={false}
-                closeOnClick={false}
-                offset={10}
-              >
-                <div className="glass-card relative p-3 min-w-[160px] text-foreground rounded-lg">
-                  <button
-                    aria-label="Close"
-                    className="absolute -top-3 -right-3 glass-close z-20"
-                    onClick={() => setSelectedHotspot(null)}
-                  >
-                    <X className="h-4 w-4 text-muted-foreground" />
-                  </button>
-                  <div className="text-center">
-                    <p className="font-bold text-sm">
-                      {selectedHotspot.species}
-                    </p>
-                    <Badge
-                      variant={
-                        selectedHotspot.probability > 0.8
-                          ? "default"
-                          : "secondary"
-                      }
-                      className="mt-1"
-                    >
-                      {(selectedHotspot.probability * 100).toFixed(0)}%
-                      Probability
-                    </Badge>
-                  </div>
-                </div>
-              </Popup>
             )}
 
             {/* Manual Destination Marker */}
@@ -3576,39 +3475,6 @@ export default function HotspotMap() {
                 </div>
               )}
             </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border-border">
-          <CardHeader>
-            <CardTitle className="text-foreground">All Hotspots</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {mockHotspots.map((hotspot, idx) => (
-              <button
-                key={idx}
-                onClick={() => handleHotspotSelect(hotspot)}
-                className={`w-full text-left p-3 rounded-lg border transition-all ${
-                  selectedHotspot === hotspot && !manualDestination
-                    ? "border-primary bg-primary/10"
-                    : "border-border bg-card hover:bg-accent"
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="font-medium text-foreground">
-                      {hotspot.species}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {hotspot.lat.toFixed(2)}°N, {hotspot.lng.toFixed(2)}°E
-                    </p>
-                  </div>
-                  <Badge variant="outline">
-                    {(hotspot.probability * 100).toFixed(0)}%
-                  </Badge>
-                </div>
-              </button>
-            ))}
           </CardContent>
         </Card>
       </div>

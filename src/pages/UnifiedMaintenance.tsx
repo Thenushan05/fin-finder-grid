@@ -54,6 +54,8 @@ import {
 } from "@/store/maintenanceRulesSlice";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/context/AuthContext";
+import AddVesselDialog from "@/components/AddVesselDialog";
+import { getFuelVessels } from "@/services/api";
 import {
   Ship,
   Plus,
@@ -115,6 +117,8 @@ export default function UnifiedMaintenance() {
     name: "",
     type: "Multi-Day Vessel",
   });
+  const [fuelVessels, setFuelVessels] = useState<any[]>([]);
+  const [selectedFuelVesselData, setSelectedFuelVesselData] = useState<any | null>(null);
 
   const [ruleDialogOpen, setRuleDialogOpen] = useState(false);
   const [editingRule, setEditingRule] = useState<MaintenanceRule | null>(null);
@@ -145,92 +149,47 @@ export default function UnifiedMaintenance() {
     trips_at_service: undefined as number | undefined,
   });
 
-  // Mock Data for Guest Users
-  const mockGuestVessels = useMemo(() => ([
-    {
-      id: "guest-vessel-1",
-      name: "Sea Explorer (Demo)",
-      type: "Multi-Day Vessel",
-      stats: {
-        lastTrip: "2025-01-15",
-        engineHours: 1250,
-        fuelOnBoard: "5,000 L",
-        iceCapacity: "90%",
-        nextServiceDue: "2025-02-01",
-      },
-      systems: [
-        {
-          id: "engine",
-          name: "Engine",
-          status: "operational",
-          description: "Main Diesel Engine",
-          blueprintImage: "/imul_blueprint_v2.png",
-          specs: { "Oil Pressure": "Good" },
-          upcomingTasks: [],
-          lastService: { date: "2025-01-10", technician: "John", notes: "Routine Check" }
-        }
-      ]
+  // Map CSV fuel vessels to the vessel shape the UI expects
+  const csvMappedVessels = useMemo(() => fuelVessels.map((fv) => ({
+    id: fv.vessel_id,
+    name: fv.vessel_id,
+    type: fv.vessel_type,
+    stats: {
+      lastTrip: "N/A",
+      engineHours: 0,
+      fuelOnBoard: `${(fv.fuel_consumption_per_day * 7).toFixed(0)} L (est. 7-day)`,
+      iceCapacity: "N/A",
+      nextServiceDue: "Not scheduled",
     },
-    {
-      id: "guest-vessel-2",
-      name: "Ocean Warrior",
-      type: "Day Boat",
-      stats: {
-        lastTrip: "2025-01-18",
-        engineHours: 450,
-        fuelOnBoard: "1,200 L",
-        iceCapacity: "100%",
-        nextServiceDue: "2025-03-10",
+    systems: [
+      {
+        id: "engine",
+        name: "Engine & Propulsion",
+        status: "operational",
+        description: `${fv.engine_type} — ${fv.hp} HP`,
+        blueprintImage: "/imul_blueprint_v2.png",
+        specs: {
+          "Engine Type": fv.engine_type,
+          "Horsepower": `${fv.hp} HP`,
+          "Daily Consumption": `${fv.fuel_consumption_per_day} L`,
+          "Daily Fuel Cost": `$${fv.fuel_cost_usd_per_day}`,
+        },
+        upcomingTasks: [],
+        lastService: { date: "N/A", technician: "N/A", notes: "Imported from vessel database" },
       },
-      systems: [
-        {
-            id: "engine",
-            name: "Outboard Motor",
-            status: "operational",
-            description: "Yamaha 200HP",
-            blueprintImage: "/iday_blueprint_v2.png",
-            specs: { "Propeller": "Clean" },
-            upcomingTasks: [],
-            lastService: { date: "2024-12-05", technician: "Service Center", notes: "100hr Service" }
-        }
-      ]
-    },
-    {
-      id: "guest-vessel-3",
-      name: "Blue Horizon",
-      type: "Multi-Day Vessel",
-      stats: {
-        lastTrip: "2024-12-28",
-        engineHours: 3400,
-        fuelOnBoard: "2,000 L",
-        iceCapacity: "45%",
-        nextServiceDue: "2025-01-20",
-      },
-      systems: [
-         {
-          id: "engine",
-          name: "Main Engine",
-          status: "due-soon",
-          description: "Older Perkins Diesel",
-          blueprintImage: "/imul_blueprint_v2.png",
-          specs: { "Coolant": "Low" },
-          upcomingTasks: [],
-          lastService: { date: "2024-11-15", technician: "Self", notes: "Oil Top-up" }
-        }
-      ]
-    }
-  ]), []);
+    ],
+  })), [fuelVessels]);
 
   // Determine if we are in guest mode
   const isGuest = !user;
-  const effectiveVessels = isGuest ? mockGuestVessels : vessels;
-  
-  // Set initial selected vessel for guest if needed
+  const effectiveVessels = isGuest ? csvMappedVessels : vessels;
+
+  // Set initial selected vessel for guest from CSV data
   useEffect(() => {
-     if (isGuest && !selectedVesselId && mockGuestVessels.length > 0) {
-        setSelectedVesselId(mockGuestVessels[0].id);
-     }
-  }, [isGuest, selectedVesselId, mockGuestVessels]);
+    if (isGuest && !selectedVesselId && csvMappedVessels.length > 0) {
+      setSelectedVesselId(csvMappedVessels[0].id);
+    }
+  }, [isGuest, selectedVesselId, csvMappedVessels]);
 
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [ruleToDelete, setRuleToDelete] = useState<MaintenanceRule | null>(
@@ -268,6 +227,27 @@ export default function UnifiedMaintenance() {
     }
   }, [dispatch, isGuest]);
 
+  // Load CSV vessel database on mount for specs auto-fill
+  useEffect(() => {
+    getFuelVessels()
+      .then((res) => setFuelVessels(res.vessels || []))
+      .catch(() => {});
+  }, []);
+
+  // Auto-match selected vessel to CSV data by name
+  useEffect(() => {
+    if (!selectedVesselId || !fuelVessels.length) {
+      setSelectedFuelVesselData(null);
+      return;
+    }
+    const vessel = effectiveVessels.find((v) => v.id === selectedVesselId) as any;
+    if (!vessel) { setSelectedFuelVesselData(null); return; }
+    const match = fuelVessels.find(
+      (fv) => fv.vessel_id === vessel.name || fv.vessel_id === vessel.vessel_id
+    );
+    setSelectedFuelVesselData(match || null);
+  }, [selectedVesselId, fuelVessels, effectiveVessels]);
+
   useEffect(() => {
     if (selectedVesselId && !isGuest) {
       dispatch(fetchMaintenanceSummary(selectedVesselId));
@@ -291,43 +271,41 @@ export default function UnifiedMaintenance() {
     }
   }, [activeTab, selectedVesselId, dispatch, isGuest]);
 
-  const currentSummary = selectedVesselId ? (isGuest ? { 
-    maintenance_score: selectedVesselId === "guest-vessel-2" ? 98 : selectedVesselId === "guest-vessel-3" ? 75 : 92,
-    overall_status: selectedVesselId === "guest-vessel-2" ? 'operational' : selectedVesselId === "guest-vessel-3" ? 'needs_attention' : 'operational',
-    status: selectedVesselId === "guest-vessel-3" ? 'warning' : 'good',
-    upcoming_maintenance: [], 
-    overdue_maintenance: [], 
-    systems: [
-         {
+  // For guest (CSV vessels) derive a basic summary from the CSV specs
+  const guestSummaryForVessel = useMemo(() => {
+    if (!selectedVesselId) return null;
+    const csvV = fuelVessels.find((fv) => fv.vessel_id === selectedVesselId);
+    return {
+      maintenance_score: 100,
+      overall_status: "operational",
+      status: "good",
+      upcoming_maintenance: [],
+      overdue_maintenance: [],
+      systems: [
+        {
           system_id: "engine",
           system_name: "Engine & Propulsion",
-          status: selectedVesselId === "guest-vessel-3" ? "due_soon" : "ok",
+          status: "ok",
           parts: [
-            { 
-              name: "Oil Filter", 
-              status: selectedVesselId === "guest-vessel-3" ? "due_soon" : "ok", 
-              message: selectedVesselId === "guest-vessel-3" ? "Oil change due soon" : "Functioning optimally",
-              current_value: 1250,
-              due_at_value: 1300
-            },
-            {
-               name: "Fuel Injectors",
-               status: "ok",
-               message: "No issues reported",
-               current_value: 1250,
-               due_at_value: 2000
-            }
-          ]
-         }
-    ]
-  } as any : summaries[selectedVesselId]) : null;
+            { name: "Oil Filter", status: "ok", message: "Functioning optimally", current_value: 0, due_at_value: 250 },
+            { name: "Fuel Injectors", status: "ok", message: "No issues reported", current_value: 0, due_at_value: 500 },
+            ...(csvV ? [
+              { name: csvV.engine_type, status: "ok", message: `${csvV.hp} HP — ${csvV.fuel_consumption_per_day} L/day`, current_value: 0, due_at_value: 1000 },
+            ] : []),
+          ],
+        },
+      ],
+    } as any;
+  }, [selectedVesselId, fuelVessels]);
 
-  const currentState = selectedVesselId ? (isGuest ? { 
-    maintenance_status: 'good', 
-    engine_hours: selectedVesselId === "guest-vessel-2" ? 450 : selectedVesselId === "guest-vessel-3" ? 3400 : 1250,
-    total_trips: selectedVesselId === "guest-vessel-2" ? 12 : selectedVesselId === "guest-vessel-3" ? 156 : 45,
-    last_trip_date: selectedVesselId === "guest-vessel-2" ? "2025-01-18" : selectedVesselId === "guest-vessel-3" ? '2024-12-28' : '2025-01-15' 
-  } : vesselStates[selectedVesselId]) : null;
+  const currentSummary = selectedVesselId
+    ? isGuest ? guestSummaryForVessel : summaries[selectedVesselId]
+    : null;
+
+  const currentState = selectedVesselId
+    ? isGuest ? { maintenance_status: "good", engine_hours: 0, total_trips: 0, last_trip_date: "N/A" }
+    : vesselStates[selectedVesselId]
+    : null;
   const selectedVessel = effectiveVessels.find((v) => v.id === selectedVesselId) as any;
 
 
@@ -794,75 +772,7 @@ export default function UnifiedMaintenance() {
           </div>
           
           <div className="flex flex-wrap items-center gap-3">
-            <Dialog open={vesselDialogOpen} onOpenChange={setVesselDialogOpen}>
-              <DialogTrigger asChild>
-                <Button className="bg-[#0284C5] hover:bg-[#026aa0] dark:bg-violet-600 dark:hover:bg-violet-700 text-white">
-                  <Plus className="mr-2 h-4 w-4" />
-                  Add Vessel
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <form onSubmit={handleCreateVessel}>
-                  <DialogHeader>
-                    <DialogTitle>Create New Vessel</DialogTitle>
-                    <DialogDescription>
-                      Add a new fishing vessel to your fleet
-                    </DialogDescription>
-                  </DialogHeader>
-                  <div className="grid gap-4 py-4">
-                    <div className="grid gap-2">
-                      <Label htmlFor="vessel-name">Vessel Name *</Label>
-                      <Input
-                        id="vessel-name"
-                        placeholder="e.g., IMUL-001"
-                        value={vesselForm.name}
-                        onChange={(e) =>
-                          setVesselForm({ ...vesselForm, name: e.target.value })
-                        }
-                        required
-                      />
-                    </div>
-                    <div className="grid gap-2">
-                      <Label htmlFor="vessel-type">Type</Label>
-                      <Select
-                        value={vesselForm.type}
-                        onValueChange={(v) =>
-                          setVesselForm({ ...vesselForm, type: v })
-                        }
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="Multi-Day Vessel">
-                            Multi-Day Vessel
-                          </SelectItem>
-                          <SelectItem value="Single-Day Vessel">
-                            Single-Day Vessel
-                          </SelectItem>
-                          <SelectItem value="Offshore Vessel">
-                            Offshore Vessel
-                          </SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-
-                  </div>
-                  <DialogFooter>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => setVesselDialogOpen(false)}
-                    >
-                      Cancel
-                    </Button>
-                    <Button type="submit" disabled={!vesselForm.name}>
-                      Create Vessel
-                    </Button>
-                  </DialogFooter>
-                </form>
-              </DialogContent>
-            </Dialog>
+            <AddVesselDialog onVesselAdded={() => dispatch(fetchVessels())} />
 
             <Dialog open={ruleDialogOpen} onOpenChange={setRuleDialogOpen}>
               <DialogTrigger asChild>
@@ -1064,24 +974,7 @@ export default function UnifiedMaintenance() {
               <p className="text-muted-foreground mb-8">
                 Create your first vessel to start tracking maintenance
               </p>
-              <Button
-                onClick={() => {
-                  if (!user) {
-                    toast({
-                      title: "Login required",
-                      description: "Please login to create a vessel",
-                      variant: "destructive",
-                    });
-                    return;
-                  }
-                  setVesselDialogOpen(true);
-                }}
-                size="lg"
-                className="bg-[#0284C5] hover:bg-[#026aa0] dark:bg-violet-600 dark:hover:bg-violet-700 text-white w-full"
-              >
-                <Plus className="mr-2 h-5 w-5" />
-                Create First Vessel
-              </Button>
+              <AddVesselDialog onVesselAdded={() => dispatch(fetchVessels())} />
             </Card>
           </div>
         )}
@@ -1126,6 +1019,57 @@ export default function UnifiedMaintenance() {
                     </div>
                  </div>
               </div>
+
+              {/* CSV vessel specs (auto-fetched from vessels.csv) */}
+              {selectedFuelVesselData && (
+                <div className="flex flex-wrap gap-5 pt-3 mt-1 border-t border-slate-100 dark:border-slate-800">
+                  <div className="flex items-center gap-2">
+                    <div className="bg-violet-100 dark:bg-violet-900/30 p-2 rounded-lg">
+                      <Cog className="h-4 w-4 text-violet-600 dark:text-violet-400" />
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-slate-400 uppercase font-medium">Engine Type</p>
+                      <p className="text-sm font-bold text-slate-900 dark:text-white">{selectedFuelVesselData.engine_type}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="bg-amber-100 dark:bg-amber-900/30 p-2 rounded-lg">
+                      <Gauge className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-slate-400 uppercase font-medium">Horsepower</p>
+                      <p className="text-sm font-bold text-slate-900 dark:text-white">{selectedFuelVesselData.hp} HP</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="bg-sky-100 dark:bg-sky-900/30 p-2 rounded-lg">
+                      <Droplet className="h-4 w-4 text-sky-600 dark:text-sky-400" />
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-slate-400 uppercase font-medium">Fuel Consumption</p>
+                      <p className="text-sm font-bold text-slate-900 dark:text-white">{selectedFuelVesselData.fuel_consumption_per_day} L/day</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="bg-green-100 dark:bg-green-900/30 p-2 rounded-lg">
+                      <DollarSign className="h-4 w-4 text-green-600 dark:text-green-400" />
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-slate-400 uppercase font-medium">Daily Fuel Cost</p>
+                      <p className="text-sm font-bold text-slate-900 dark:text-white">${selectedFuelVesselData.fuel_cost_usd_per_day}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="bg-rose-100 dark:bg-rose-900/30 p-2 rounded-lg">
+                      <Fish className="h-4 w-4 text-rose-600 dark:text-rose-400" />
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-slate-400 uppercase font-medium">Vessel Type</p>
+                      <p className="text-sm font-bold text-slate-900 dark:text-white">{selectedFuelVesselData.vessel_type}</p>
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
 
             <div className="flex items-center gap-8 bg-slate-50 dark:bg-slate-950/50 p-6 rounded-2xl border border-slate-100 dark:border-slate-800">

@@ -17,7 +17,6 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Progress } from "@/components/ui/progress";
-import { mockHotspots } from "@/services/mockData";
 import { useState, useEffect, useMemo } from "react";
 import {
   Ship,
@@ -101,6 +100,11 @@ export default function TripPlanner() {
   // Checklist State
   const [checklist, setChecklist] = useState(SAFETY_ITEMS);
 
+  // Scan predictions loaded from localStorage (written by UnifiedMapControls after every scan)
+  const [scanPredictions, setScanPredictions] = useState<
+    Array<{ lat: number; lng: number; species: string }>
+  >([]);
+
   // Load vessels on component mount
   const loadVessels = async () => {
     setIsLoadingVessels(true);
@@ -126,6 +130,25 @@ export default function TripPlanner() {
     loadVessels();
   }, [toast]);
 
+  // Load hotspot predictions from localStorage (populated by map scan)
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("fishspot_hotspot_scan");
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        const preds: any[] = parsed?.result?.predictions ?? [];
+        const species: string = parsed?.meta?.species ?? "Fishing Ground";
+        setScanPredictions(
+          preds
+            .sort((a: any, b: any) => b.score - a.score)
+            .map((p: any) => ({ lat: p.lat, lng: p.lon, species })),
+        );
+      }
+    } catch {
+      /* ignore corrupted localStorage */
+    }
+  }, []);
+
   // Calculate fuel consumption when parameters change
   useEffect(() => {
     if (useRealCalculation && selectedVessel && selectedHotspots.length > 0) {
@@ -148,8 +171,13 @@ export default function TripPlanner() {
       const coordinates = [harbor];
 
       selectedHotspots.forEach((idx) => {
-        const hotspot = mockHotspots[idx];
-        coordinates.push({ lat: hotspot.lat, lng: hotspot.lng, name: hotspot.species });
+        const hotspot = scanPredictions[idx];
+        if (hotspot)
+          coordinates.push({
+            lat: hotspot.lat,
+            lng: hotspot.lng,
+            name: hotspot.species,
+          });
       });
 
       coordinates.push(harbor); // return journey
@@ -185,8 +213,13 @@ export default function TripPlanner() {
 
       // Add selected hotspots
       selectedHotspots.forEach((idx) => {
-        const hotspot = mockHotspots[idx];
-        coordinates.push({ lat: hotspot.lat, lng: hotspot.lng, name: hotspot.species });
+        const hotspot = scanPredictions[idx];
+        if (hotspot)
+          coordinates.push({
+            lat: hotspot.lat,
+            lng: hotspot.lng,
+            name: hotspot.species,
+          });
       });
 
       // Return to harbor
@@ -195,7 +228,7 @@ export default function TripPlanner() {
       // Try to find a matching fuel vessel for calculation
       // This is needed because the fuel API expects vessel_id from fuel database
       const selectedMaintenanceVessel = vessels.find(
-        (v) => (v._id || v.name) === selectedVessel
+        (v) => (v._id || v.name) === selectedVessel,
       );
       let vesselIdForCalculation = selectedVessel;
 
@@ -212,8 +245,8 @@ export default function TripPlanner() {
                 selectedMaintenanceVessel.type?.toLowerCase() &&
               Math.abs(
                 (fv.hp || 0) -
-                  (selectedMaintenanceVessel.specifications?.horsepower || 0)
-              ) <= 20
+                  (selectedMaintenanceVessel.specifications?.horsepower || 0),
+              ) <= 20,
           );
 
           if (matchingFuelVessel) {
@@ -266,19 +299,19 @@ export default function TripPlanner() {
     useRealWeather && realWeatherCondition
       ? realWeatherCondition.fuelMultiplier
       : seaCondition === "rough"
-      ? 1.3
-      : seaCondition === "choppy"
-      ? 1.15
-      : 1.0;
+        ? 1.3
+        : seaCondition === "choppy"
+          ? 1.15
+          : 1.0;
 
   const speedMultiplier =
     useRealWeather && realWeatherCondition
       ? realWeatherCondition.speedMultiplier
       : seaCondition === "rough"
-      ? 0.7
-      : seaCondition === "choppy"
-      ? 0.85
-      : 1.0;
+        ? 0.7
+        : seaCondition === "choppy"
+          ? 0.85
+          : 1.0;
 
   // Adjusted Fuel Calculation
   const adjustedFuelRate = parseFloat(fuelRate || "0") * weatherMultiplier;
@@ -311,8 +344,8 @@ export default function TripPlanner() {
   const toggleCheck = (id: string) => {
     setChecklist(
       checklist.map((item) =>
-        item.id === id ? { ...item, checked: !item.checked } : item
-      )
+        item.id === id ? { ...item, checked: !item.checked } : item,
+      ),
     );
   };
 
@@ -360,8 +393,8 @@ export default function TripPlanner() {
 
   return (
     <div className="relative min-h-screen w-full overflow-hidden bg-slate-50 dark:bg-slate-950 p-6">
-       {/* Background */}
-       <div className="absolute inset-0 z-0 opacity-40 dark:opacity-20 pointer-events-none">
+      {/* Background */}
+      <div className="absolute inset-0 z-0 opacity-40 dark:opacity-20 pointer-events-none">
         <svg className="w-full h-full" xmlns="http://www.w3.org/2000/svg">
           <defs>
             <pattern
@@ -401,7 +434,6 @@ export default function TripPlanner() {
       </div>
 
       <div className="relative z-10 max-w-7xl mx-auto space-y-8">
-        
         {/* Header */}
         <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
           <div>
@@ -417,361 +449,511 @@ export default function TripPlanner() {
               Advanced logistics planning and risk assessment system
             </p>
           </div>
-          
+
           <div className="flex items-center gap-3 bg-white/50 dark:bg-slate-900/50 backdrop-blur-sm p-2 rounded-xl border border-slate-200 dark:border-slate-800">
-             <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border ${
-               hasEnoughFuel && !cutsIntoReserve 
-               ? 'bg-emerald-50 border-emerald-200 text-emerald-700 dark:bg-emerald-950/30 dark:border-emerald-900 dark:text-emerald-400' 
-               : cutsIntoReserve 
-               ? 'bg-amber-50 border-amber-200 text-amber-700 dark:bg-amber-950/30 dark:border-amber-900 dark:text-amber-400'
-               : 'bg-red-50 border-red-200 text-red-700 dark:bg-red-950/30 dark:border-red-900 dark:text-red-400'
-             }`}>
-                {hasEnoughFuel && !cutsIntoReserve ? <CalendarCheck className="h-4 w-4" /> : <AlertTriangle className="h-4 w-4" />}
-                <span className="text-sm font-bold uppercase tracking-wide">
-                  {!hasEnoughFuel ? "Mission Critical" : cutsIntoReserve ? "Caution Required" : "Ready for Launch"}
-                </span>
-             </div>
+            <div
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border ${
+                hasEnoughFuel && !cutsIntoReserve
+                  ? "bg-emerald-50 border-emerald-200 text-emerald-700 dark:bg-emerald-950/30 dark:border-emerald-900 dark:text-emerald-400"
+                  : cutsIntoReserve
+                    ? "bg-amber-50 border-amber-200 text-amber-700 dark:bg-amber-950/30 dark:border-amber-900 dark:text-amber-400"
+                    : "bg-red-50 border-red-200 text-red-700 dark:bg-red-950/30 dark:border-red-900 dark:text-red-400"
+              }`}
+            >
+              {hasEnoughFuel && !cutsIntoReserve ? (
+                <CalendarCheck className="h-4 w-4" />
+              ) : (
+                <AlertTriangle className="h-4 w-4" />
+              )}
+              <span className="text-sm font-bold uppercase tracking-wide">
+                {!hasEnoughFuel
+                  ? "Mission Critical"
+                  : cutsIntoReserve
+                    ? "Caution Required"
+                    : "Ready for Launch"}
+              </span>
+            </div>
           </div>
         </div>
 
         <div className="grid gap-8 lg:grid-cols-12">
-          
           {/* LEFT COLUMN: SETTINGS */}
           <div className="lg:col-span-4 space-y-6">
             <Card className="backdrop-blur-md bg-white/70 dark:bg-slate-900/60 border-slate-200 dark:border-slate-800 shadow-xl overflow-hidden">
-               <div className="absolute top-0 left-0 w-1 h-full bg-sky-500"></div>
-               <CardHeader>
-                  <CardTitle className="flex items-center gap-2 text-lg">
-                     <AccordionIcon className="h-5 w-5 text-sky-500" />
-                     Mission Configuration
-                  </CardTitle>
-                  <CardDescription>Set parameters for the upcoming voyage</CardDescription>
-               </CardHeader>
-               <CardContent className="space-y-5">
-                  <div className="space-y-3">
-                    <Label className="text-xs font-semibold uppercase tracking-wider text-slate-500">Vessel & Harbor</Label>
-                    <div className="grid gap-3">
-                       <Select value={selectedHarbor} onValueChange={(v: any) => setSelectedHarbor(v)}>
-                          <SelectTrigger className="bg-slate-50 dark:bg-slate-950/50">
-                             <div className="flex items-center gap-2">
-                                <Anchor className="h-4 w-4 text-sky-500" />
-                                <SelectValue />
-                             </div>
-                          </SelectTrigger>
-                          <SelectContent>
-                              <SelectItem value="colombo">Colombo Harbor</SelectItem>
-                              <SelectItem value="galle">Galle Harbor</SelectItem>
-                              <SelectItem value="trinco">Trincomalee Harbor</SelectItem>
-                              <SelectItem value="negombo">Negombo Harbor</SelectItem>
-                          </SelectContent>
-                       </Select>
+              <div className="absolute top-0 left-0 w-1 h-full bg-sky-500"></div>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-lg">
+                  <AccordionIcon className="h-5 w-5 text-sky-500" />
+                  Mission Configuration
+                </CardTitle>
+                <CardDescription>
+                  Set parameters for the upcoming voyage
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-5">
+                <div className="space-y-3">
+                  <Label className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                    Vessel & Harbor
+                  </Label>
+                  <div className="grid gap-3">
+                    <Select
+                      value={selectedHarbor}
+                      onValueChange={(v: any) => setSelectedHarbor(v)}
+                    >
+                      <SelectTrigger className="bg-slate-50 dark:bg-slate-950/50">
+                        <div className="flex items-center gap-2">
+                          <Anchor className="h-4 w-4 text-sky-500" />
+                          <SelectValue />
+                        </div>
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="colombo">Colombo Harbor</SelectItem>
+                        <SelectItem value="galle">Galle Harbor</SelectItem>
+                        <SelectItem value="trinco">
+                          Trincomalee Harbor
+                        </SelectItem>
+                        <SelectItem value="negombo">Negombo Harbor</SelectItem>
+                      </SelectContent>
+                    </Select>
 
-                       <div className="flex gap-2">
-                          <Select value={selectedVessel} onValueChange={setSelectedVessel} disabled={isLoadingVessels}>
-                            <SelectTrigger className="bg-slate-50 dark:bg-slate-950/50 flex-1">
-                                <div className="flex items-center gap-2">
-                                  <Ship className="h-4 w-4 text-sky-500" />
-                                  <SelectValue placeholder={isLoadingVessels ? "Loading..." : "Select Vessel"} />
-                                </div>
-                            </SelectTrigger>
-                            <SelectContent>
-                                {vessels.map((v) => (
-                                  <SelectItem key={v._id || v.name} value={v._id || v.name}>
-                                    {v.name} ({v.type})
-                                  </SelectItem>
-                                ))}
-                            </SelectContent>
-                          </Select>
-                          <AddVesselDialog onVesselAdded={loadVessels} />
-                       </div>
+                    <div className="flex gap-2">
+                      <Select
+                        value={selectedVessel}
+                        onValueChange={setSelectedVessel}
+                        disabled={isLoadingVessels}
+                      >
+                        <SelectTrigger className="bg-slate-50 dark:bg-slate-950/50 flex-1">
+                          <div className="flex items-center gap-2">
+                            <Ship className="h-4 w-4 text-sky-500" />
+                            <SelectValue
+                              placeholder={
+                                isLoadingVessels
+                                  ? "Loading..."
+                                  : "Select Vessel"
+                              }
+                            />
+                          </div>
+                        </SelectTrigger>
+                        <SelectContent>
+                          {vessels.map((v) => (
+                            <SelectItem
+                              key={v._id || v.name}
+                              value={v._id || v.name}
+                            >
+                              {v.name} ({v.type})
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <AddVesselDialog onVesselAdded={loadVessels} />
                     </div>
                   </div>
+                </div>
 
-                  <div className="space-y-3">
-                    <Label className="text-xs font-semibold uppercase tracking-wider text-slate-500">Logistics Data</Label>
-                    <div className="grid grid-cols-2 gap-3">
-                       <div className="space-y-1">
-                          <Label className="text-[10px] text-slate-400">TANK CAPACITY (L)</Label>
-                          <Input type="number" value={tankCapacity} onChange={(e) => setTankCapacity(e.target.value)} className="bg-slate-50 dark:bg-slate-950/50 font-mono" />
-                       </div>
-                       <div className="space-y-1">
-                          <Label className="text-[10px] text-slate-400">CURRENT FUEL (L)</Label>
-                          <div className="relative">
-                            <Input type="number" value={currentFuelLevel} onChange={(e) => setCurrentFuelLevel(e.target.value)} className="bg-slate-50 dark:bg-slate-950/50 font-mono pr-8" />
-                            <span className="absolute right-3 top-2.5 text-xs text-slate-400">L</span>
-                          </div>
-                       </div>
+                <div className="space-y-3">
+                  <Label className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                    Logistics Data
+                  </Label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <Label className="text-[10px] text-slate-400">
+                        TANK CAPACITY (L)
+                      </Label>
+                      <Input
+                        type="number"
+                        value={tankCapacity}
+                        onChange={(e) => setTankCapacity(e.target.value)}
+                        className="bg-slate-50 dark:bg-slate-950/50 font-mono"
+                      />
                     </div>
                     <div className="space-y-1">
-                          <Label className="text-[10px] text-slate-400">BASE CONSUMPTION (L/HR)</Label>
-                          <Input type="number" value={fuelRate} onChange={(e) => setFuelRate(e.target.value)} className="bg-slate-50 dark:bg-slate-950/50 font-mono" />
+                      <Label className="text-[10px] text-slate-400">
+                        CURRENT FUEL (L)
+                      </Label>
+                      <div className="relative">
+                        <Input
+                          type="number"
+                          value={currentFuelLevel}
+                          onChange={(e) => setCurrentFuelLevel(e.target.value)}
+                          className="bg-slate-50 dark:bg-slate-950/50 font-mono pr-8"
+                        />
+                        <span className="absolute right-3 top-2.5 text-xs text-slate-400">
+                          L
+                        </span>
+                      </div>
                     </div>
                   </div>
+                  <div className="space-y-1">
+                    <Label className="text-[10px] text-slate-400">
+                      BASE CONSUMPTION (L/HR)
+                    </Label>
+                    <Input
+                      type="number"
+                      value={fuelRate}
+                      onChange={(e) => setFuelRate(e.target.value)}
+                      className="bg-slate-50 dark:bg-slate-950/50 font-mono"
+                    />
+                  </div>
+                </div>
 
-                  <div className="space-y-3 pt-2 bg-slate-50 dark:bg-slate-900/40 p-3 rounded-xl border border-dashed border-slate-200 dark:border-slate-800">
-                    <div className="flex items-center justify-between">
-                       <Label className="text-xs font-semibold uppercase tracking-wider text-slate-500">Target Destination</Label>
-                       <Badge variant="outline" className="bg-sky-100 text-sky-700 border-sky-200 dark:bg-sky-900/30 dark:text-sky-400 dark:border-sky-800 text-[10px]">
-                          IMPORTED FROM MAP
-                       </Badge>
-                    </div>
-                     <div className="bg-white dark:bg-slate-950 rounded-lg border border-slate-200 dark:border-slate-800 p-3 shadow-sm relative overflow-hidden group">
-                        <div className="absolute top-0 left-0 w-1 h-full bg-sky-500"></div>
-                        {/* Hardcoded Destination Display */}
-                        {(() => {
-                           const hotspot = mockHotspots[0]; // Hardcoded [0]
-                           const harbor = HARBORS[selectedHarbor];
-                           const dist = calculateGeoDistance(harbor.lat, harbor.lng, hotspot.lat, hotspot.lng);
-                           return (
-                              <div className="flex justify-between items-center pl-2">
-                                 <div>
-                                    <div className="flex items-center gap-2">
-                                       <span className="text-sm font-bold text-slate-900 dark:text-white">{hotspot.species} Ground</span>
-                                       <Badge className="bg-emerald-500 text-white text-[10px] h-4 px-1">High Prob.</Badge>
-                                    </div>
-                                    <div className="flex items-center gap-2 mt-1 text-xs text-slate-500 font-mono">
-                                       <span className="flex items-center gap-1"><MapPin className="w-3 h-3" /> {hotspot.lat.toFixed(4)}, {hotspot.lng.toFixed(4)}</span>
-                                    </div>
-                                    <div className="mt-2 text-sky-600 dark:text-sky-400 text-xs font-bold flex items-center gap-1">
-                                       <Navigation className="w-3 h-3" />
-                                       {dist.toFixed(1)} km from {HARBORS[selectedHarbor].name}
-                                    </div>
-                                 </div>
+                <div className="space-y-3 pt-2 bg-slate-50 dark:bg-slate-900/40 p-3 rounded-xl border border-dashed border-slate-200 dark:border-slate-800">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                      Target Destination
+                    </Label>
+                    <Badge
+                      variant="outline"
+                      className="bg-sky-100 text-sky-700 border-sky-200 dark:bg-sky-900/30 dark:text-sky-400 dark:border-sky-800 text-[10px]"
+                    >
+                      IMPORTED FROM MAP
+                    </Badge>
+                  </div>
+                  <div className="bg-white dark:bg-slate-950 rounded-lg border border-slate-200 dark:border-slate-800 p-3 shadow-sm relative overflow-hidden group">
+                    <div className="absolute top-0 left-0 w-1 h-full bg-sky-500"></div>
+                    {/* Destination Display */}
+                    {scanPredictions.length > 0 ? (
+                      (() => {
+                        const hotspot = scanPredictions[0];
+                        const harbor = HARBORS[selectedHarbor];
+                        const dist = calculateGeoDistance(
+                          harbor.lat,
+                          harbor.lng,
+                          hotspot.lat,
+                          hotspot.lng,
+                        );
+                        return (
+                          <div className="flex justify-between items-center pl-2">
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <span className="text-sm font-bold text-slate-900 dark:text-white">
+                                  {hotspot.species}
+                                </span>
+                                <Badge className="bg-emerald-500 text-white text-[10px] h-4 px-1">
+                                  High Prob.
+                                </Badge>
                               </div>
-                           );
-                        })()}
-                     </div>
+                              <div className="flex items-center gap-2 mt-1 text-xs text-slate-500 font-mono">
+                                <span className="flex items-center gap-1">
+                                  <MapPin className="w-3 h-3" />{" "}
+                                  {hotspot.lat.toFixed(4)},{" "}
+                                  {hotspot.lng.toFixed(4)}
+                                </span>
+                              </div>
+                              <div className="mt-2 text-sky-600 dark:text-sky-400 text-xs font-bold flex items-center gap-1">
+                                <Navigation className="w-3 h-3" />
+                                {dist.toFixed(1)} km from{" "}
+                                {HARBORS[selectedHarbor].name}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })()
+                    ) : (
+                      <div className="flex items-center gap-2 pl-2 text-slate-400 text-sm">
+                        <MapPin className="w-4 h-4 opacity-40" />
+                        <span>
+                          Run a hotspot scan on the Map page to set a
+                          destination
+                        </span>
+                      </div>
+                    )}
                   </div>
+                </div>
 
-                  <div className="hidden">
-                    {/* Advanced Data Section Removed as per request (Always ON) */}
-                  </div>
-               </CardContent>
+                <div className="hidden">
+                  {/* Advanced Data Section Removed as per request (Always ON) */}
+                </div>
+              </CardContent>
             </Card>
-
-
           </div>
-
 
           {/* RIGHT COLUMN: STATUS */}
           <div className="lg:col-span-8 space-y-6">
-             
-             {/* TOP CARDS: ANALYSIS */}
-             <div className="grid md:grid-cols-2 gap-6">
-                
-                {/* 1. Fuel Analysis */}
-                <Card className="backdrop-blur-md bg-white/70 dark:bg-slate-900/60 border-slate-200 dark:border-slate-800 shadow-lg group">
-                   <CardHeader className="pb-2">
-                      <CardTitle className="text-sm font-medium uppercase tracking-widest text-slate-500 flex items-center justify-between">
-                         <span>Range Analysis</span>
-                         {isCalculating && <Loader2 className="h-3 w-3 animate-spin" />}
-                      </CardTitle>
-                   </CardHeader>
-                   <CardContent>
-                      <div className="flex flex-col gap-6">
-                         
-                         {/* Primary Fuel Indicator */}
-                         <div className="flex flex-col items-center justify-center py-2">
-                            <div className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">Estimated Fuel Required</div>
-                            <div className="flex items-baseline gap-2">
-                               <span className={`text-5xl font-black tracking-tighter ${
-                                  !hasEnoughFuel ? 'text-red-500' : 'text-slate-900 dark:text-white'
-                               }`}>
-                                  {fuelUsed.toFixed(0)}
-                               </span>
-                               <span className="text-xl font-bold text-slate-400">Liters</span>
-                            </div>
-                            {/* Comparison pill */}
-                            <div className={`mt-2 px-3 py-1 rounded-full text-xs font-bold border ${
-                               !hasEnoughFuel 
-                               ? 'bg-red-50 text-red-600 border-red-200 dark:bg-red-900/20 dark:border-red-800' 
-                               : 'bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700'
-                            }`}>
-                               Uses {fuelUsed.toFixed(0)}L of {fuelOnboard.toFixed(0)}L available
-                            </div>
-                         </div>
-
-                         <div className="relative pt-2">
-                            {/* Fuel Visualization Bar */}
-                            <div className="h-3 w-full bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
-                               <div className="h-full bg-slate-300 dark:bg-slate-700 w-full relative">
-                                  {/* Available Fuel Base (scaled to tank capacity if known, else relative) */}
-                                  <div className="absolute top-0 left-0 h-full bg-slate-200 dark:bg-slate-700 w-full"></div>
-                                  
-                                  {/* Current Onboard Fuel Bar */}
-                                  <div className="absolute top-0 left-0 h-full bg-sky-200 dark:bg-sky-900/50" 
-                                       style={{ width: `${Math.min(100, (fuelOnboard / tankCap) * 100)}%` }}></div>
-
-                                  {/* Usage Bar (Relative to Tank Capacity) */}
-                                  <div className={`absolute top-0 left-0 h-full transition-all duration-1000 ${
-                                     !hasEnoughFuel ? 'bg-red-500' : 'bg-sky-500'
-                                  }`} 
-                                  style={{ width: `${Math.min(100, (fuelUsed / tankCap) * 100)}%` }}></div>
-                                  
-                                  {/* Reserve Marker Line */}
-                                  <div className="absolute top-0 left-[20%] h-full w-0.5 bg-red-400/50 z-10" title="Reserve Level"></div>
-                               </div>
-                            </div>
-                            <div className="flex justify-between text-[10px] font-mono text-slate-400 mt-1.5 uppercase">
-                               <span>0 L</span>
-                               <span>Reserve ({reserveFuel.toFixed(0)} L)</span>
-                               <span>Capacity ({tankCap.toFixed(0)} L)</span>
-                            </div>
-                         </div>
-
-                         <div className="grid grid-cols-2 gap-4">
-                            {/* NEW: Total Trip Distance Prominent Display */}
-                            <div className="col-span-2 p-4 bg-sky-50/50 dark:bg-sky-900/20 rounded-xl border border-sky-100 dark:border-sky-800 flex items-center justify-between group-hover:border-sky-200 dark:group-hover:border-sky-700/50 transition-colors">
-                               <div>
-                                  <div className="flex items-center gap-2 text-xs font-bold text-sky-600 dark:text-sky-400 uppercase tracking-widest mb-1">
-                                    <MapPin className="w-3 h-3" />
-                                    Total Trip Distance
-                                  </div>
-                                  <div className="text-4xl font-black text-slate-900 dark:text-white tracking-tight">
-                                    {baseDistance.toFixed(1)} 
-                                    <span className="text-lg text-slate-400 font-bold ml-1">km</span>
-                                  </div>
-                               </div>
-                               <div className="h-10 w-10 rounded-full bg-sky-100 dark:bg-sky-900 flex items-center justify-center">
-                                  <Navigation className="h-5 w-5 text-sky-600 dark:text-sky-400" />
-                               </div>
-                            </div>
-
-                            <div className="p-3 bg-slate-50 dark:bg-slate-950/50 rounded-lg border border-slate-100 dark:border-slate-800">
-                               <div className="text-[10px] text-slate-400 font-bold uppercase mb-1">Max Range</div>
-                               <div className="text-2xl font-black text-slate-900 dark:text-white">{maxRange.toFixed(0)} <span className="text-sm text-slate-400 font-normal">km</span></div>
-                            </div>
-                            <div className="p-3 bg-slate-50 dark:bg-slate-950/50 rounded-lg border border-slate-100 dark:border-slate-800">
-                               <div className="text-[10px] text-slate-400 font-bold uppercase mb-1">Fuel Remaining</div>
-                               <div className={`text-2xl font-black ${
-                                  !hasEnoughFuel ? 'text-red-500' : cutsIntoReserve ? 'text-amber-500' : 'text-emerald-500'
-                               }`}>
-                                  {Math.max(0, fuelRemainingAfterTrip).toFixed(0)} <span className="text-sm text-slate-400 font-normal">L</span>
-                               </div>
-                            </div>
-                         </div>
-                      </div>
-                   </CardContent>
-                </Card>
-
-                {/* 2. Environmental Analysis */}
-                 <Card className="backdrop-blur-md bg-white/70 dark:bg-slate-900/60 border-slate-200 dark:border-slate-800 shadow-lg">
-                   <CardHeader className="pb-2">
-                      <CardTitle className="text-sm font-medium uppercase tracking-widest text-slate-500 flex items-center justify-between">
-                         <span>Condition Assessment</span>
-                         {isLoadingWeather && <Loader2 className="h-3 w-3 animate-spin" />}
-                      </CardTitle>
-                   </CardHeader>
-                   <CardContent className="space-y-6">
-                      
-                      <div className="flex gap-2">
-                        {['calm', 'choppy', 'rough'].map((cond) => (
-                           <button
-                              key={cond}
-                              onClick={() => !useRealWeather && setSeaCondition(cond)}
-                              disabled={useRealWeather}
-                              className={`flex-1 py-2 px-1 rounded-lg text-xs font-bold uppercase transition-all border ${
-                                seaCondition === cond
-                                ? cond === 'rough' 
-                                  ? 'bg-red-100 text-red-700 border-red-200 dark:bg-red-900/30' 
-                                  : cond === 'choppy' 
-                                  ? 'bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/30'
-                                  : 'bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30'
-                                : 'bg-slate-50 text-slate-400 border-slate-100 dark:bg-slate-900/50 dark:border-slate-800 opacity-60 hover:opacity-100'
-                              }`}
-                           >
-                              {cond}
-                           </button>
-                        ))}
-                      </div>
-
-                      <div className="grid grid-cols-2 gap-4">
-                         <div className="space-y-1">
-                            <div className="flex items-center gap-1.5 text-slate-500">
-                               <Waves className="h-4 w-4" />
-                               <span className="text-xs uppercase font-bold">Sea State</span>
-                            </div>
-                            <div className="text-sm font-medium text-slate-900 dark:text-white pl-5.5">
-                               {useRealWeather && realWeatherCondition ? `${realWeatherCondition.waveHeight.toFixed(1)}m Swells` : seaCondition === 'rough' ? '> 2.0m Swells' : 'Normal'}
-                            </div>
-                         </div>
-                         <div className="space-y-1">
-                            <div className="flex items-center gap-1.5 text-slate-500">
-                               <Wind className="h-4 w-4" />
-                               <span className="text-xs uppercase font-bold">Wind</span>
-                            </div>
-                            <div className="text-sm font-medium text-slate-900 dark:text-white pl-5.5">
-                               {useRealWeather && realWeatherCondition ? `${realWeatherCondition.windSpeed.toFixed(1)} m/s` : 'Variable'}
-                            </div>
-                         </div>
-                      </div>
-
-                      <div className="p-3 rounded-lg bg-slate-100 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 flex items-center gap-3">
-                         <div className="p-2 bg-white dark:bg-slate-800 rounded-md shadow-sm">
-                            <Navigation className="h-4 w-4 text-sky-500" />
-                         </div>
-                         <div>
-                            <div className="text-[10px] uppercase text-slate-400 font-bold">Consumption Impact</div>
-                            <div className="text-sm font-bold text-slate-900 dark:text-white">
-                               + {((weatherMultiplier - 1) * 100).toFixed(0)}% <span className="font-normal text-slate-500">due to conditions</span>
-                            </div>
-                         </div>
-                      </div>
-
-                   </CardContent>
-                </Card>
-             </div>
-
-             {/* BOTTOM: PRE-FLIGHT CHECKLIST */}
-             <Card className="backdrop-blur-md bg-white/70 dark:bg-slate-900/60 border-slate-200 dark:border-slate-800 shadow-lg">
-                <CardHeader className="pb-4">
-                   <div className="flex justify-between items-center">
-                      <CardTitle className="text-lg flex items-center gap-2">
-                         <CheckSquare className="h-5 w-5 text-sky-500" />
-                         Pre-Departure Safety Protocols
-                      </CardTitle>
-                      <Badge variant="outline" className={`font-mono ${progress === 100 ? 'bg-emerald-50 text-emerald-600 border-emerald-200' : 'bg-slate-100'}`}>
-                         {checkedCount}/{checklist.length} CLEARED
-                      </Badge>
-                   </div>
-                   <Progress value={progress} className="h-1.5 bg-slate-100" />
+            {/* TOP CARDS: ANALYSIS */}
+            <div className="grid md:grid-cols-2 gap-6">
+              {/* 1. Fuel Analysis */}
+              <Card className="backdrop-blur-md bg-white/70 dark:bg-slate-900/60 border-slate-200 dark:border-slate-800 shadow-lg group">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium uppercase tracking-widest text-slate-500 flex items-center justify-between">
+                    <span>Range Analysis</span>
+                    {isCalculating && (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    )}
+                  </CardTitle>
                 </CardHeader>
                 <CardContent>
-                   <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-3">
-                      {checklist.map((item) => (
-                         <div 
-                           key={item.id}
-                           onClick={() => toggleCheck(item.id)}
-                           className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all duration-200 group ${
-                             item.checked 
-                             ? 'bg-emerald-50/50 dark:bg-emerald-900/10 border-emerald-200 dark:border-emerald-800/30 shadow-sm' 
-                             : 'bg-white/50 dark:bg-slate-900/30 border-slate-100 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700'
-                           }`}
-                         >
-                            <div className={`w-8 h-8 rounded-full flex items-center justify-center transition-all ${
-                              item.checked ? 'bg-emerald-500 text-white scale-110' : 'bg-slate-200 dark:bg-slate-800 text-slate-400 group-hover:bg-slate-300'
-                            }`}>
-                               {item.checked ? <CheckSquare className="h-4 w-4" /> : <div className="w-2 h-2 rounded-full bg-slate-400" />}
-                            </div>
-                            <span className={`text-sm font-medium ${item.checked ? 'text-slate-900 dark:text-slate-100' : 'text-slate-500'}`}>
-                               {item.label}
+                  <div className="flex flex-col gap-6">
+                    {/* Primary Fuel Indicator */}
+                    <div className="flex flex-col items-center justify-center py-2">
+                      <div className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">
+                        Estimated Fuel Required
+                      </div>
+                      <div className="flex items-baseline gap-2">
+                        <span
+                          className={`text-5xl font-black tracking-tighter ${
+                            !hasEnoughFuel
+                              ? "text-red-500"
+                              : "text-slate-900 dark:text-white"
+                          }`}
+                        >
+                          {fuelUsed.toFixed(0)}
+                        </span>
+                        <span className="text-xl font-bold text-slate-400">
+                          Liters
+                        </span>
+                      </div>
+                      {/* Comparison pill */}
+                      <div
+                        className={`mt-2 px-3 py-1 rounded-full text-xs font-bold border ${
+                          !hasEnoughFuel
+                            ? "bg-red-50 text-red-600 border-red-200 dark:bg-red-900/20 dark:border-red-800"
+                            : "bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700"
+                        }`}
+                      >
+                        Uses {fuelUsed.toFixed(0)}L of {fuelOnboard.toFixed(0)}L
+                        available
+                      </div>
+                    </div>
+
+                    <div className="relative pt-2">
+                      {/* Fuel Visualization Bar */}
+                      <div className="h-3 w-full bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                        <div className="h-full bg-slate-300 dark:bg-slate-700 w-full relative">
+                          {/* Available Fuel Base (scaled to tank capacity if known, else relative) */}
+                          <div className="absolute top-0 left-0 h-full bg-slate-200 dark:bg-slate-700 w-full"></div>
+
+                          {/* Current Onboard Fuel Bar */}
+                          <div
+                            className="absolute top-0 left-0 h-full bg-sky-200 dark:bg-sky-900/50"
+                            style={{
+                              width: `${Math.min(100, (fuelOnboard / tankCap) * 100)}%`,
+                            }}
+                          ></div>
+
+                          {/* Usage Bar (Relative to Tank Capacity) */}
+                          <div
+                            className={`absolute top-0 left-0 h-full transition-all duration-1000 ${
+                              !hasEnoughFuel ? "bg-red-500" : "bg-sky-500"
+                            }`}
+                            style={{
+                              width: `${Math.min(100, (fuelUsed / tankCap) * 100)}%`,
+                            }}
+                          ></div>
+
+                          {/* Reserve Marker Line */}
+                          <div
+                            className="absolute top-0 left-[20%] h-full w-0.5 bg-red-400/50 z-10"
+                            title="Reserve Level"
+                          ></div>
+                        </div>
+                      </div>
+                      <div className="flex justify-between text-[10px] font-mono text-slate-400 mt-1.5 uppercase">
+                        <span>0 L</span>
+                        <span>Reserve ({reserveFuel.toFixed(0)} L)</span>
+                        <span>Capacity ({tankCap.toFixed(0)} L)</span>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      {/* NEW: Total Trip Distance Prominent Display */}
+                      <div className="col-span-2 p-4 bg-sky-50/50 dark:bg-sky-900/20 rounded-xl border border-sky-100 dark:border-sky-800 flex items-center justify-between group-hover:border-sky-200 dark:group-hover:border-sky-700/50 transition-colors">
+                        <div>
+                          <div className="flex items-center gap-2 text-xs font-bold text-sky-600 dark:text-sky-400 uppercase tracking-widest mb-1">
+                            <MapPin className="w-3 h-3" />
+                            Total Trip Distance
+                          </div>
+                          <div className="text-4xl font-black text-slate-900 dark:text-white tracking-tight">
+                            {baseDistance.toFixed(1)}
+                            <span className="text-lg text-slate-400 font-bold ml-1">
+                              km
                             </span>
-                         </div>
-                      ))}
-                   </div>
+                          </div>
+                        </div>
+                        <div className="h-10 w-10 rounded-full bg-sky-100 dark:bg-sky-900 flex items-center justify-center">
+                          <Navigation className="h-5 w-5 text-sky-600 dark:text-sky-400" />
+                        </div>
+                      </div>
+
+                      <div className="p-3 bg-slate-50 dark:bg-slate-950/50 rounded-lg border border-slate-100 dark:border-slate-800">
+                        <div className="text-[10px] text-slate-400 font-bold uppercase mb-1">
+                          Max Range
+                        </div>
+                        <div className="text-2xl font-black text-slate-900 dark:text-white">
+                          {maxRange.toFixed(0)}{" "}
+                          <span className="text-sm text-slate-400 font-normal">
+                            km
+                          </span>
+                        </div>
+                      </div>
+                      <div className="p-3 bg-slate-50 dark:bg-slate-950/50 rounded-lg border border-slate-100 dark:border-slate-800">
+                        <div className="text-[10px] text-slate-400 font-bold uppercase mb-1">
+                          Fuel Remaining
+                        </div>
+                        <div
+                          className={`text-2xl font-black ${
+                            !hasEnoughFuel
+                              ? "text-red-500"
+                              : cutsIntoReserve
+                                ? "text-amber-500"
+                                : "text-emerald-500"
+                          }`}
+                        >
+                          {Math.max(0, fuelRemainingAfterTrip).toFixed(0)}{" "}
+                          <span className="text-sm text-slate-400 font-normal">
+                            L
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
                 </CardContent>
-             </Card>
+              </Card>
 
-             {/* Trip Enhancements (Market/Route) */}
-             <TripPlannerEnhancements
-                selectedVessel={selectedVessel}
-                selectedHotspots={selectedHotspots}
-                fuelCalculation={fuelCalculation}
-                seaCondition={seaCondition}
-                realWeatherCondition={realWeatherCondition}
-                useRealWeather={useRealWeather}
-             />
+              {/* 2. Environmental Analysis */}
+              <Card className="backdrop-blur-md bg-white/70 dark:bg-slate-900/60 border-slate-200 dark:border-slate-800 shadow-lg">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium uppercase tracking-widest text-slate-500 flex items-center justify-between">
+                    <span>Condition Assessment</span>
+                    {isLoadingWeather && (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    )}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  <div className="flex gap-2">
+                    {["calm", "choppy", "rough"].map((cond) => (
+                      <button
+                        key={cond}
+                        onClick={() => !useRealWeather && setSeaCondition(cond)}
+                        disabled={useRealWeather}
+                        className={`flex-1 py-2 px-1 rounded-lg text-xs font-bold uppercase transition-all border ${
+                          seaCondition === cond
+                            ? cond === "rough"
+                              ? "bg-red-100 text-red-700 border-red-200 dark:bg-red-900/30"
+                              : cond === "choppy"
+                                ? "bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/30"
+                                : "bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30"
+                            : "bg-slate-50 text-slate-400 border-slate-100 dark:bg-slate-900/50 dark:border-slate-800 opacity-60 hover:opacity-100"
+                        }`}
+                      >
+                        {cond}
+                      </button>
+                    ))}
+                  </div>
 
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-1.5 text-slate-500">
+                        <Waves className="h-4 w-4" />
+                        <span className="text-xs uppercase font-bold">
+                          Sea State
+                        </span>
+                      </div>
+                      <div className="text-sm font-medium text-slate-900 dark:text-white pl-5.5">
+                        {useRealWeather && realWeatherCondition
+                          ? `${realWeatherCondition.waveHeight.toFixed(1)}m Swells`
+                          : seaCondition === "rough"
+                            ? "> 2.0m Swells"
+                            : "Normal"}
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-1.5 text-slate-500">
+                        <Wind className="h-4 w-4" />
+                        <span className="text-xs uppercase font-bold">
+                          Wind
+                        </span>
+                      </div>
+                      <div className="text-sm font-medium text-slate-900 dark:text-white pl-5.5">
+                        {useRealWeather && realWeatherCondition
+                          ? `${realWeatherCondition.windSpeed.toFixed(1)} m/s`
+                          : "Variable"}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="p-3 rounded-lg bg-slate-100 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 flex items-center gap-3">
+                    <div className="p-2 bg-white dark:bg-slate-800 rounded-md shadow-sm">
+                      <Navigation className="h-4 w-4 text-sky-500" />
+                    </div>
+                    <div>
+                      <div className="text-[10px] uppercase text-slate-400 font-bold">
+                        Consumption Impact
+                      </div>
+                      <div className="text-sm font-bold text-slate-900 dark:text-white">
+                        + {((weatherMultiplier - 1) * 100).toFixed(0)}%{" "}
+                        <span className="font-normal text-slate-500">
+                          due to conditions
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* BOTTOM: PRE-FLIGHT CHECKLIST */}
+            <Card className="backdrop-blur-md bg-white/70 dark:bg-slate-900/60 border-slate-200 dark:border-slate-800 shadow-lg">
+              <CardHeader className="pb-4">
+                <div className="flex justify-between items-center">
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <CheckSquare className="h-5 w-5 text-sky-500" />
+                    Pre-Departure Safety Protocols
+                  </CardTitle>
+                  <Badge
+                    variant="outline"
+                    className={`font-mono ${progress === 100 ? "bg-emerald-50 text-emerald-600 border-emerald-200" : "bg-slate-100"}`}
+                  >
+                    {checkedCount}/{checklist.length} CLEARED
+                  </Badge>
+                </div>
+                <Progress value={progress} className="h-1.5 bg-slate-100" />
+              </CardHeader>
+              <CardContent>
+                <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-3">
+                  {checklist.map((item) => (
+                    <div
+                      key={item.id}
+                      onClick={() => toggleCheck(item.id)}
+                      className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all duration-200 group ${
+                        item.checked
+                          ? "bg-emerald-50/50 dark:bg-emerald-900/10 border-emerald-200 dark:border-emerald-800/30 shadow-sm"
+                          : "bg-white/50 dark:bg-slate-900/30 border-slate-100 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700"
+                      }`}
+                    >
+                      <div
+                        className={`w-8 h-8 rounded-full flex items-center justify-center transition-all ${
+                          item.checked
+                            ? "bg-emerald-500 text-white scale-110"
+                            : "bg-slate-200 dark:bg-slate-800 text-slate-400 group-hover:bg-slate-300"
+                        }`}
+                      >
+                        {item.checked ? (
+                          <CheckSquare className="h-4 w-4" />
+                        ) : (
+                          <div className="w-2 h-2 rounded-full bg-slate-400" />
+                        )}
+                      </div>
+                      <span
+                        className={`text-sm font-medium ${item.checked ? "text-slate-900 dark:text-slate-100" : "text-slate-500"}`}
+                      >
+                        {item.label}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Trip Enhancements (Market/Route) */}
+            <TripPlannerEnhancements
+              selectedVessel={selectedVessel}
+              selectedHotspots={selectedHotspots}
+              fuelCalculation={fuelCalculation}
+              seaCondition={seaCondition}
+              realWeatherCondition={realWeatherCondition}
+              useRealWeather={useRealWeather}
+            />
           </div>
         </div>
       </div>
@@ -779,7 +961,12 @@ export default function TripPlanner() {
   );
 }
 
-function calculateGeoDistance(lat1: number, lon1: number, lat2: number, lon2: number) {
+function calculateGeoDistance(
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number,
+) {
   const R = 6371; // km
   const dLat = (lat2 - lat1) * (Math.PI / 180);
   const dLon = (lon2 - lon1) * (Math.PI / 180);

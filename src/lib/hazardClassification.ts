@@ -3,6 +3,16 @@
 
 export type HazardLevel = "LOW" | "MEDIUM" | "HIGH" | "DANGER";
 
+/** Represents a weather hazard event selectable on the map */
+export interface WeatherHazard {
+  lat: number;
+  lng: number;
+  type: string; // e.g. "storm" | "tornado" | "squall"
+  severity: string; // e.g. "high" | "medium" | "low"
+  windSpeed?: number; // in knots
+  waveHeight?: number; // in metres
+}
+
 export interface HazardResult {
   level: HazardLevel;
   score: number;
@@ -92,7 +102,7 @@ export function calculateHazardLevel(
   windKmh: number | null | undefined,
   waveM: number | null | undefined,
   weatherCode: number | null | undefined,
-  currentMs?: number | null | undefined
+  currentMs?: number | null | undefined,
 ): HazardResult {
   const windScore = getWindRisk(windKmh);
   const waveScore = getWaveRisk(waveM);
@@ -107,8 +117,8 @@ export function calculateHazardLevel(
       windScore === 1
         ? "Medium (20-40 km/h)"
         : windScore === 2
-        ? "High (40-60 km/h)"
-        : "Danger (>60 km/h)";
+          ? "High (40-60 km/h)"
+          : "Danger (>60 km/h)";
     reasons.push(`Wind: ${windKmh?.toFixed(0) ?? "N/A"} km/h (${windLabel})`);
   }
   if (waveScore > 0) {
@@ -116,8 +126,8 @@ export function calculateHazardLevel(
       waveScore === 1
         ? "Medium (1-2 m)"
         : waveScore === 2
-        ? "High (2-3 m)"
-        : "Danger (>3 m)";
+          ? "High (2-3 m)"
+          : "Danger (>3 m)";
     reasons.push(`Waves: ${waveM?.toFixed(1) ?? "N/A"} m (${waveLabel})`);
   }
   if (condScore > 0) {
@@ -128,10 +138,10 @@ export function calculateHazardLevel(
       currentScore === 1
         ? "Medium (0.3-0.8 m/s)"
         : currentScore === 2
-        ? "High (0.8-1.5 m/s)"
-        : "Danger (>1.5 m/s)";
+          ? "High (0.8-1.5 m/s)"
+          : "Danger (>1.5 m/s)";
     reasons.push(
-      `Current: ${currentMs?.toFixed(2) ?? "N/A"} m/s (${curLabel})`
+      `Current: ${currentMs?.toFixed(2) ?? "N/A"} m/s (${curLabel})`,
     );
   }
 
@@ -177,7 +187,7 @@ export function calculateHazardLevel(
  * Get a human-readable weather description from WMO code
  */
 export function getWeatherDescription(
-  weatherCode: number | null | undefined
+  weatherCode: number | null | undefined,
 ): string {
   if (weatherCode == null) return "Unknown";
 
