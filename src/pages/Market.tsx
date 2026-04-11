@@ -369,40 +369,7 @@ export default function Market() {
             ))}
       </div>
 
-      {/* -- FESTIVAL BOOST BANNER ----------------------------------------------- */}
-      {!loadingSummary && summary?.festival_name && (
-        <div className="flex items-center gap-3 px-4 py-3 rounded-xl bg-amber-50 dark:bg-amber-500/10 border border-amber-200 dark:border-amber-500/20 text-sm">
-          <span className="text-lg">🎉</span>
-          <div className="flex-1">
-            <span className="font-bold text-amber-700 dark:text-amber-400">
-              Festival Boost Active:
-            </span>{" "}
-            <span className="text-amber-700 dark:text-amber-300">
-              {summary.festival_name}
-            </span>
-            {summary.festival_days !== null && summary.festival_days > 0 && (
-              <span className="text-amber-600 dark:text-amber-400">
-                {" "}
-                (in {summary.festival_days} days)
-              </span>
-            )}
-            {summary.festival_days === 0 && (
-              <span className="text-amber-600 dark:text-amber-400">
-                {" "}
-                · Today
-              </span>
-            )}
-          </div>
-          <div className="shrink-0 flex items-center gap-2">
-            <span className="text-xs font-bold text-amber-600 dark:text-amber-400 uppercase tracking-wider">
-              ML boost active
-            </span>
-            <Badge className="bg-amber-500 hover:bg-amber-600 text-white text-xs">
-              +{summary.festival_boost.toFixed(1)} pressure
-            </Badge>
-          </div>
-        </div>
-      )}
+      {/* Festival boost banner hidden */}
 
       <div className="grid grid-cols-1 lg:grid-cols-12 gap-6">
         {/* ── MAIN COLUMN ───────────────────────────────────────────────── */}
@@ -509,17 +476,7 @@ export default function Market() {
                           ? "Heuristic fallback"
                           : "Live ML model"}
                       </Badge>
-                      {(predict?.festival_name || summary?.festival_name) && (
-                        <Badge
-                          variant="outline"
-                          className="bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-800 gap-1.5 py-1.5 pl-2 pr-3"
-                        >
-                          <Calendar className="w-3.5 h-3.5" />{" "}
-                          {predict?.festival_name ??
-                            summary?.festival_name ??
-                            ""}
-                        </Badge>
-                      )}
+                      {/* Festival badge hidden */}
                     </div>
                   </div>
                   {/* confidence ring */}

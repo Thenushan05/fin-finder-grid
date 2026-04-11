@@ -218,6 +218,18 @@ export default function HotspotMap() {
           lat: position.coords.latitude,
           lng: position.coords.longitude,
         });
+        // Persist start location so TripPlanner can use it
+        try {
+          localStorage.setItem(
+            "fishspot_start_location",
+            JSON.stringify({
+              lat: position.coords.latitude,
+              lng: position.coords.longitude,
+            }),
+          );
+        } catch {
+          /* ignore */
+        }
         // Debug: log raw geolocation to console for troubleshooting
         console.debug("Geolocation success:", {
           latitude: position.coords.latitude,
@@ -272,6 +284,18 @@ export default function HotspotMap() {
           lat: position.coords.latitude,
           lng: position.coords.longitude,
         });
+        // Persist start location so TripPlanner can use it
+        try {
+          localStorage.setItem(
+            "fishspot_start_location",
+            JSON.stringify({
+              lat: position.coords.latitude,
+              lng: position.coords.longitude,
+            }),
+          );
+        } catch {
+          /* ignore */
+        }
         // Debug: log raw geolocation on retry
         console.debug("Geolocation retry success:", {
           latitude: position.coords.latitude,
@@ -661,6 +685,28 @@ export default function HotspotMap() {
       zoom: 10,
     });
 
+    // Persist to localStorage so TripPlanner auto-imports this as the target destination
+    try {
+      localStorage.setItem(
+        "fishspot_confirmed_destination",
+        JSON.stringify({
+          lat: hotspot.lat,
+          lng: hotspot.lng,
+          label: hotspot.species ?? "Hotspot",
+        }),
+      );
+      // Always persist the current start so TripPlanner can compute real distance
+      localStorage.setItem(
+        "fishspot_start_location",
+        JSON.stringify({
+          lat: effectiveStartLocation.lat,
+          lng: effectiveStartLocation.lng,
+        }),
+      );
+    } catch {
+      /* ignore */
+    }
+
     // Auto-scan route for the selected hotspot
     setAlternativeRoutes([]);
     setSelectedRouteType("main");
@@ -859,6 +905,47 @@ export default function HotspotMap() {
   const [showEEZ, setShowEEZ] = useState(true);
   const [show24nm, setShow24nm] = useState(true);
   const [show12nm, setShow12nm] = useState(true);
+
+  // EEZ outer boundary only (no inner land/island rings) — used for the line layer
+  const [eezOuterLine, setEezOuterLine] = useState<any>(null);
+  const [nm24OuterLine, setNm24OuterLine] = useState<any>(null);
+  const [nm12OuterLine, setNm12OuterLine] = useState<any>(null);
+  useEffect(() => {
+    const extractOuter = (url: string, setter: (g: any) => void) => {
+      fetch(url)
+        .then((r) => r.json())
+        .then((data) => {
+          const features = (data.features ?? []).flatMap((feat: any) => {
+            const gt = feat.geometry?.type;
+            if (gt === "Polygon") {
+              return [
+                {
+                  type: "Feature",
+                  geometry: {
+                    type: "LineString",
+                    coordinates: feat.geometry.coordinates[0],
+                  },
+                  properties: feat.properties,
+                },
+              ];
+            }
+            if (gt === "MultiPolygon") {
+              return feat.geometry.coordinates.map((poly: any) => ({
+                type: "Feature",
+                geometry: { type: "LineString", coordinates: poly[0] },
+                properties: feat.properties,
+              }));
+            }
+            return [];
+          });
+          setter({ type: "FeatureCollection", features });
+        })
+        .catch(() => {});
+    };
+    extractOuter("/geojson/sri_lanka_eez.geojson", setEezOuterLine);
+    extractOuter("/geojson/sri_lanka_24nm.geojson", setNm24OuterLine);
+    extractOuter("/geojson/sri_lanka_12nm.geojson", setNm12OuterLine);
+  }, []);
 
   // Time optimization: analyze route at different departure times
   const [timeAnalysis, setTimeAnalysis] = useState<Array<{
@@ -1830,6 +1917,23 @@ export default function HotspotMap() {
                         setOriginalMainRoute([]);
                         // Start from userLocation if available, otherwise use fallback
                         const start = effectiveStartLocation;
+                        // Persist destination + start so TripPlanner gets correct distance
+                        try {
+                          localStorage.setItem(
+                            "fishspot_confirmed_destination",
+                            JSON.stringify({
+                              lat: dest.lat,
+                              lng: dest.lng,
+                              label: "Map Destination",
+                            }),
+                          );
+                          localStorage.setItem(
+                            "fishspot_start_location",
+                            JSON.stringify({ lat: start.lat, lng: start.lng }),
+                          );
+                        } catch {
+                          /* ignore */
+                        }
                         void fetchRouteWeather(start, dest, 15);
                       }}
                     >
@@ -2273,73 +2377,117 @@ export default function HotspotMap() {
               <>
                 {/* 200NM Exclusive Economic Zone */}
                 {showEEZ && (
-                  <Source
-                    id="eez-source"
-                    type="geojson"
-                    data="/geojson/sri_lanka_eez.geojson"
-                  >
-                    <Layer
-                      id="eez-fill"
-                      type="fill"
-                      paint={{ "fill-color": "#0ea5e9", "fill-opacity": 0.05 }}
-                    />
-                    <Layer
-                      id="eez-line"
-                      type="line"
-                      paint={{
-                        "line-color": "#ef4444",
-                        "line-width": 3,
-                        "line-dasharray": [2, 2],
-                      }}
-                    />
-                  </Source>
+                  <>
+                    {/* Fill using original polygon (inner rings = land holes → ocean-only fill) */}
+                    <Source
+                      id="eez-source"
+                      type="geojson"
+                      data="/geojson/sri_lanka_eez.geojson"
+                    >
+                      <Layer
+                        id="eez-fill"
+                        type="fill"
+                        paint={{
+                          "fill-color": "#0ea5e9",
+                          "fill-opacity": 0.05,
+                        }}
+                      />
+                    </Source>
+                    {/* Outer maritime boundary line only — inner land/island rings excluded */}
+                    {eezOuterLine && (
+                      <Source
+                        id="eez-outer-source"
+                        type="geojson"
+                        data={eezOuterLine}
+                      >
+                        <Layer
+                          id="eez-line"
+                          type="line"
+                          paint={{
+                            "line-color": "#ef4444",
+                            "line-width": 3,
+                            "line-dasharray": [2, 2],
+                          }}
+                        />
+                      </Source>
+                    )}
+                  </>
                 )}
 
                 {/* 24NM Contiguous Zone */}
                 {show24nm && (
-                  <Source
-                    id="24nm-source"
-                    type="geojson"
-                    data="/geojson/sri_lanka_24nm.geojson"
-                  >
-                    <Layer
-                      id="24nm-fill"
-                      type="fill"
-                      paint={{ "fill-color": "#3b82f6", "fill-opacity": 0.08 }}
-                    />
-                    <Layer
-                      id="24nm-line"
-                      type="line"
-                      paint={{ "line-color": "#3b82f6", "line-width": 1.5 }}
-                    />
-                  </Source>
+                  <>
+                    <Source
+                      id="24nm-source"
+                      type="geojson"
+                      data="/geojson/sri_lanka_24nm.geojson"
+                    >
+                      <Layer
+                        id="24nm-fill"
+                        type="fill"
+                        paint={{
+                          "fill-color": "#3b82f6",
+                          "fill-opacity": 0.08,
+                        }}
+                      />
+                    </Source>
+                    {nm24OuterLine && (
+                      <Source
+                        id="24nm-outer-source"
+                        type="geojson"
+                        data={nm24OuterLine}
+                      >
+                        <Layer
+                          id="24nm-line"
+                          type="line"
+                          paint={{ "line-color": "#3b82f6", "line-width": 1.5 }}
+                        />
+                      </Source>
+                    )}
+                  </>
                 )}
 
                 {/* 12NM Territorial Sea */}
                 {show12nm && (
-                  <Source
-                    id="12nm-source"
-                    type="geojson"
-                    data="/geojson/sri_lanka_12nm.geojson"
-                  >
-                    <Layer
-                      id="12nm-fill"
-                      type="fill"
-                      paint={{ "fill-color": "#1d4ed8", "fill-opacity": 0.1 }}
-                    />
-                    <Layer
-                      id="12nm-line"
-                      type="line"
-                      paint={{ "line-color": "#1d4ed8", "line-width": 1.5 }}
-                    />
-                  </Source>
+                  <>
+                    <Source
+                      id="12nm-source"
+                      type="geojson"
+                      data="/geojson/sri_lanka_12nm.geojson"
+                    >
+                      <Layer
+                        id="12nm-fill"
+                        type="fill"
+                        paint={{ "fill-color": "#1d4ed8", "fill-opacity": 0.1 }}
+                      />
+                    </Source>
+                    {nm12OuterLine && (
+                      <Source
+                        id="12nm-outer-source"
+                        type="geojson"
+                        data={nm12OuterLine}
+                      >
+                        <Layer
+                          id="12nm-line"
+                          type="line"
+                          paint={{ "line-color": "#1d4ed8", "line-width": 1.5 }}
+                        />
+                      </Source>
+                    )}
+                  </>
                 )}
               </>
             )}
           </Map>
 
           {/* Jaffna controls overlay - passes the mapRef so it can add/update hotspot layer */}
-          <UnifiedMapControls mapRef={mapRef} />
+          <UnifiedMapControls
+            mapRef={mapRef}
+            onTopPrediction={(hotspot) => {
+              setSelectedHotspot(hotspot);
+              setManualDestination(null);
+            }}
+          />
 
           {/* Maritime Boundary Legend Overlay */}
           <div className="absolute bottom-6 right-6 z-20 pointer-events-none">

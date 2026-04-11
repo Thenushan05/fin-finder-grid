@@ -29,7 +29,7 @@ const items = [
   { title: "Dashboard", url: "/dashboard", icon: TrendingUp },
   { title: "Hotspot Map", url: "/hotspot-map", icon: Map },
   { title: "Species & Spawning", url: "/species", icon: Fish },
-  { title: "Gear Management", url: "/gear", icon: Anchor },
+  { title: "Gear Management", url: "/gear", icon: Anchor, hidden: true },
   { title: "Maintenance", url: "/maintenance", icon: Wrench },
   { title: "Market Trends", url: "/market", icon: TrendingUp },
   { title: "Trip Planner", url: "/trip-planner", icon: Ship },
@@ -54,23 +54,25 @@ export function AppSidebar() {
           </div>
           <SidebarGroupContent>
             <SidebarMenu>
-              {items.map((item) => (
-                <SidebarMenuItem key={item.title}>
-                  <SidebarMenuButton asChild className="h-10">
-                    <NavLink
-                      to={item.url}
-                      end={item.url === "/"}
-                      className="hover:bg-sidebar-accent w-full flex items-center p-2"
-                      activeClassName="bg-sidebar-accent text-sidebar-accent-foreground font-medium"
-                    >
-                      <item.icon className="h-4 w-4" />
-                      {!collapsed && (
-                        <span className="text-base ml-3">{item.title}</span>
-                      )}
-                    </NavLink>
-                  </SidebarMenuButton>
-                </SidebarMenuItem>
-              ))}
+              {items
+                .filter((item) => !item.hidden)
+                .map((item) => (
+                  <SidebarMenuItem key={item.title}>
+                    <SidebarMenuButton asChild className="h-10">
+                      <NavLink
+                        to={item.url}
+                        end={item.url === "/"}
+                        className="hover:bg-sidebar-accent w-full flex items-center p-2"
+                        activeClassName="bg-sidebar-accent text-sidebar-accent-foreground font-medium"
+                      >
+                        <item.icon className="h-4 w-4" />
+                        {!collapsed && (
+                          <span className="text-base ml-3">{item.title}</span>
+                        )}
+                      </NavLink>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
             </SidebarMenu>
           </SidebarGroupContent>
         </SidebarGroup>

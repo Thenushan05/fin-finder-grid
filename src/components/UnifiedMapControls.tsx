@@ -5,9 +5,12 @@ import {
   postRegionPrediction,
   predictFromPoint,
   predictLocalGround,
+  startPredictJob,
+  getPredictJobStatus,
   listSpots,
   saveSpot,
   deleteSpot,
+  getDepth,
   type SavedSpot,
 } from "@/services/api";
 import { showError } from "@/services/notificationService";
@@ -58,16 +61,53 @@ async function loadEEZ() {
   _eezCache = await resp.json();
   return _eezCache;
 }
+// Returns true only if point is in the EEZ polygon (the EEZ polygon has a
+// land-hole cut out, so Sri Lanka land points return false here too).
 function isInsideEEZ(lat: number, lng: number, eez: any): boolean {
   try {
-    return booleanPointInPolygon(turfPoint([lng, lat]), eez.features[0]);
+    const geom = eez.features[0]?.geometry;
+    if (!geom) return true;
+    return booleanPointInPolygon(turfPoint([lng, lat]), geom);
   } catch {
     return true; // assume inside if check fails
   }
 }
 
+// ── Sri Lanka land check ─────────────────────────────────────────────────────
+// The EEZ polygon excludes the island itself (land hole), so when a user picks
+// a point on Sri Lankan land it incorrectly looks "outside EEZ". We suppress
+// the EEZ warning for land points — the scan/predict flow will catch them
+// separately via the ocean wave-data check.
+let _landCache: any = null;
+async function loadLand() {
+  if (_landCache) return _landCache;
+  try {
+    const resp = await fetch("/geojson/sri_lanka_land.geojson");
+    _landCache = await resp.json();
+  } catch {
+    _landCache = null;
+  }
+  return _landCache;
+}
+function isOnSriLankaLand(lat: number, lng: number, land: any): boolean {
+  if (!land) return false;
+  try {
+    const geom = land.features[0]?.geometry;
+    if (!geom) return false;
+    return booleanPointInPolygon(turfPoint([lng, lat]), geom);
+  } catch {
+    return false;
+  }
+}
+
 type Props = {
   mapRef: React.RefObject<MapRef>;
+  onTopPrediction?: (hotspot: {
+    lat: number;
+    lng: number;
+    species: string;
+    probability: number;
+  }) => void;
 };
 
 // Jaffna bbox (approx). Adjust if you want a different box.
@@ -80,6 +120,7 @@ const JAFFNA_BBOX = {
 
 /** localStorage key for persisting the last hotspot scan result */
 const HOTSPOT_LS_KEY = "fishspot_hotspot_scan";
+const LOCAL_GROUND_FORM_LS_KEY = "fishspot_localground_form";
 
 /**
  * Minimum spacing between scan points (km).
@@ -89,6 +130,13 @@ const HOTSPOT_LS_KEY = "fishspot_hotspot_scan";
  * within a single scan but still valid as absolute region descriptors).
  */
 const SCAN_MIN_SPACING_KM = 5.0;
+
+const DEPARTURE_HARBORS = [
+  "Myllidy",
+  "Point Pedro",
+  "Codbay",
+  "Valaichennai",
+] as const;
 
 /**
  * Compute the scan radius (km) for N points such that inter-point spacing
@@ -141,7 +189,7 @@ function makeCircleGeoJSON(
   };
 }
 
-export default function UnifiedMapControls({ mapRef }: Props) {
+export default function UnifiedMapControls({ mapRef, onTopPrediction }: Props) {
   const [isExpanded, setIsExpanded] = useState(true);
   const [activeTab, setActiveTab] = useState("hotspots");
   const [hasDangerZone, setHasDangerZone] = useState(false);
@@ -193,6 +241,47 @@ export default function UnifiedMapControls({ mapRef }: Props) {
   const [spotLat, setSpotLat] = useState("");
   const [spotLng, setSpotLng] = useState("");
   const [spotTotalKg, setSpotTotalKg] = useState("");
+  const [spotDeparturePort, setSpotDeparturePort] = useState<string>(
+    DEPARTURE_HARBORS[0],
+  );
+
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(LOCAL_GROUND_FORM_LS_KEY);
+      if (!raw) return;
+      const saved = JSON.parse(raw);
+      if (typeof saved?.spotName === "string") setSpotName(saved.spotName);
+      if (typeof saved?.spotLat === "string") setSpotLat(saved.spotLat);
+      if (typeof saved?.spotLng === "string") setSpotLng(saved.spotLng);
+      if (typeof saved?.spotTotalKg === "string")
+        setSpotTotalKg(saved.spotTotalKg);
+      if (
+        typeof saved?.spotDeparturePort === "string" &&
+        DEPARTURE_HARBORS.includes(saved.spotDeparturePort)
+      ) {
+        setSpotDeparturePort(saved.spotDeparturePort);
+      }
+    } catch {
+      // ignore invalid local storage payload
+    }
+  }, []);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(
+        LOCAL_GROUND_FORM_LS_KEY,
+        JSON.stringify({
+          spotName,
+          spotLat,
+          spotLng,
+          spotTotalKg,
+          spotDeparturePort,
+        }),
+      );
+    } catch {
+      // ignore quota or storage errors
+    }
+  }, [spotName, spotLat, spotLng, spotTotalKg, spotDeparturePort]);
 
   // ── Saved spots (per-user, from DB) ──────────────────────────────────
   const [savedSpots, setSavedSpots] = useState<SavedSpot[]>([]);
@@ -228,7 +317,12 @@ export default function UnifiedMapControls({ mapRef }: Props) {
     setSpotsSaving(true);
     try {
       const totalKg = parseFloat(spotTotalKg);
-      const spot = await saveSpot(spotName.trim(), lat, lng, isNaN(totalKg) ? 0 : totalKg);
+      const spot = await saveSpot(
+        spotName.trim(),
+        lat,
+        lng,
+        isNaN(totalKg) ? 0 : totalKg,
+      );
       setSavedSpots((prev) => [spot, ...prev]);
     } catch (e: any) {
       setSpotsError(e?.response?.data?.detail ?? "Failed to save spot.");
@@ -245,6 +339,26 @@ export default function UnifiedMapControls({ mapRef }: Props) {
       // ignore
     }
   }, []);
+
+  const clearLocalGroundInputs = useCallback(() => {
+    setSpotName("");
+    setSpotLat("");
+    setSpotLng("");
+    setSpotTotalKg("");
+    setSpotDeparturePort(DEPARTURE_HARBORS[0]);
+    setSpotsError(null);
+    setLocalGroundError(null);
+    setSpotOutsideEEZ(false);
+    setLocalGroundPred(null);
+    localGroundMarkerRef.current?.remove();
+    localGroundMarkerRef.current = null;
+    try {
+      localStorage.removeItem(LOCAL_GROUND_FORM_LS_KEY);
+    } catch {
+      // ignore storage errors
+    }
+  }, []);
+
   const [isPickingFromMap, setIsPickingFromMap] = useState(false);
   const [localGroundLoading, setLocalGroundLoading] = useState(false);
   const [localGroundPred, setLocalGroundPred] = useState<{
@@ -262,14 +376,99 @@ export default function UnifiedMapControls({ mapRef }: Props) {
 
   // ── EEZ warnings ────────────────────────────────────────────────────────
   const eezRef = useRef<any>(null);
+  const landRef = useRef<any>(null);
   const [eezLoaded, setEezLoaded] = useState(false);
   const [spotOutsideEEZ, setSpotOutsideEEZ] = useState(false);
   const [scanOutsideEEZ, setScanOutsideEEZ] = useState(false);
   const [eezPopupOpen, setEezPopupOpen] = useState(false);
-  const [eezPopupType, setEezPopupType] = useState<"local" | "hotspot">("local");
+  const [eezPopupType, setEezPopupType] = useState<"local" | "hotspot">(
+    "local",
+  );
+
+  // ── Background Job Resume ───────────────────────────────────────────────
+  // Resumes a pending prediction if the user navigates away and comes back
+  useEffect(() => {
+    const rawJob = localStorage.getItem("fishspot_pending_job");
+    if (!rawJob || validating) return;
+    try {
+      const { jobId, context } = JSON.parse(rawJob);
+      if (!jobId || !context) return;
+
+      setValidating(true);
+      setValidationSteps([
+        { label: "Resuming prediction from background...", status: "running" },
+      ]);
+      const ab = new AbortController();
+      abortControllerRef.current = ab;
+
+      const resumeJob = async () => {
+        try {
+          let result = null;
+          while (!ab.signal.aborted) {
+            const st = await getPredictJobStatus(jobId, ab.signal);
+            if (st.status === "completed") {
+              result = st.result;
+              break;
+            } else if (st.status === "failed") {
+              throw new Error(st.detail || "Prediction failed on server.");
+            }
+            await new Promise((r) => setTimeout(r, 10000));
+          }
+          if (ab.signal.aborted) return;
+          localStorage.removeItem("fishspot_pending_job");
+
+          const waterPredictions = (result.predictions ?? []).filter(
+            (p: any) => p.depth == null || Number(p.depth) < 0,
+          );
+          result.predictions = waterPredictions;
+          setValidationSteps([{ label: "Scan complete!", status: "ok" }]);
+          setPredictionResult(result);
+          if (context) {
+            plotSampledPoints(result.predictions, {
+              species: context.species,
+              threshold: context.threshold,
+              nPoints: context.nPoints,
+            });
+          }
+
+          const map = mapRef.current?.getMap();
+          if (map && result.start_point) {
+            map.flyTo({
+              center: [result.start_point.lon, result.start_point.lat],
+              zoom: 12,
+              duration: 1500,
+            });
+          }
+        } catch (err: any) {
+          if (err.response?.status === 404)
+            localStorage.removeItem("fishspot_pending_job");
+          setValidationError(
+            err.response?.data?.detail ||
+              err.message ||
+              "Failed to resume prediction.",
+          );
+          setValidationSteps([
+            { label: "Error resuming scan", status: "fail" },
+          ]);
+        } finally {
+          setValidating(false);
+          abortControllerRef.current = null;
+        }
+      };
+      resumeJob();
+    } catch {}
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []); // Run only on mount
 
   useEffect(() => {
-    loadEEZ().then((data) => { eezRef.current = data; setEezLoaded(true); });
+    loadEEZ().then((data) => {
+      eezRef.current = data;
+      setEezLoaded(true);
+    });
+    // Load land boundary in parallel (used to suppress false EEZ warnings on land)
+    loadLand().then((data) => {
+      landRef.current = data;
+    });
   }, []);
 
   // Re-runs whenever location changes OR when EEZ data finishes loading (fixes race condition)
@@ -277,9 +476,40 @@ export default function UnifiedMapControls({ mapRef }: Props) {
     const lat = parseFloat(spotLat);
     const lng = parseFloat(spotLng);
     if (!isNaN(lat) && !isNaN(lng) && eezRef.current) {
+      // Primary land check: GeoJSON polygon (fast, synchronous)
+      const onLandGeoJSON = isOnSriLankaLand(lat, lng, landRef.current);
+      if (onLandGeoJSON) {
+        // Definitely land — suppress EEZ warning immediately
+        setSpotOutsideEEZ(false);
+        return;
+      }
+      // EEZ check — also do GEBCO depth check for land pixels the GeoJSON misses
       const outside = !isInsideEEZ(lat, lng, eezRef.current);
-      setSpotOutsideEEZ(outside);
-      if (outside) { setEezPopupType("local"); setEezPopupOpen(true); }
+      if (outside) {
+        // Secondary land check: GEBCO depth (async, catches pixels GeoJSON misses)
+        getDepth(lat, lng)
+          .then((depthData) => {
+            const elev: number | null = depthData?.value ?? null;
+            const onLandGEBCO = elev !== null && elev >= 0;
+            if (!onLandGEBCO) {
+              // Confirmed ocean and outside EEZ — show legal warning
+              setSpotOutsideEEZ(true);
+              setEezPopupType("local");
+              setEezPopupOpen(true);
+            } else {
+              // Land point — suppress warning
+              setSpotOutsideEEZ(false);
+            }
+          })
+          .catch(() => {
+            // GEBCO unreachable — fall back to showing warning (ocean assumed)
+            setSpotOutsideEEZ(true);
+            setEezPopupType("local");
+            setEezPopupOpen(true);
+          });
+      } else {
+        setSpotOutsideEEZ(false);
+      }
     } else {
       setSpotOutsideEEZ(false);
     }
@@ -287,9 +517,43 @@ export default function UnifiedMapControls({ mapRef }: Props) {
 
   useEffect(() => {
     if (startPoint && eezRef.current) {
-      const outside = !isInsideEEZ(startPoint.lat, startPoint.lng, eezRef.current);
-      setScanOutsideEEZ(outside);
-      if (outside) { setEezPopupType("hotspot"); setEezPopupOpen(true); }
+      // Primary land check: GeoJSON polygon (fast, synchronous)
+      const onLandGeoJSON = isOnSriLankaLand(
+        startPoint.lat,
+        startPoint.lng,
+        landRef.current,
+      );
+      if (onLandGeoJSON) {
+        setScanOutsideEEZ(false);
+        return;
+      }
+      const outside = !isInsideEEZ(
+        startPoint.lat,
+        startPoint.lng,
+        eezRef.current,
+      );
+      if (outside) {
+        // Secondary land check: GEBCO depth (catches pixels the GeoJSON misses)
+        getDepth(startPoint.lat, startPoint.lng)
+          .then((depthData) => {
+            const elev: number | null = depthData?.value ?? null;
+            const onLandGEBCO = elev !== null && elev >= 0;
+            if (!onLandGEBCO) {
+              setScanOutsideEEZ(true);
+              setEezPopupType("hotspot");
+              setEezPopupOpen(true);
+            } else {
+              setScanOutsideEEZ(false);
+            }
+          })
+          .catch(() => {
+            setScanOutsideEEZ(true);
+            setEezPopupType("hotspot");
+            setEezPopupOpen(true);
+          });
+      } else {
+        setScanOutsideEEZ(false);
+      }
     } else {
       setScanOutsideEEZ(false);
     }
@@ -338,11 +602,32 @@ export default function UnifiedMapControls({ mapRef }: Props) {
       return;
     }
     // Fallback EEZ guard (covers cases where EEZ loaded after location was set)
-    if (eezRef.current && !isInsideEEZ(lat, lng, eezRef.current)) {
-      setSpotOutsideEEZ(true);
-      setEezPopupType("local");
-      setEezPopupOpen(true);
-      return;
+    // First check GeoJSON polygon (fast), then GEBCO depth (catches missed land pixels)
+    const onLandFallback = isOnSriLankaLand(lat, lng, landRef.current);
+    if (
+      !onLandFallback &&
+      eezRef.current &&
+      !isInsideEEZ(lat, lng, eezRef.current)
+    ) {
+      // Secondary GEBCO check before showing legal warning
+      try {
+        const depthData = await getDepth(lat, lng);
+        const elev: number | null = depthData?.value ?? null;
+        if (elev !== null && elev >= 0) {
+          // Land point — proceed without warning
+        } else {
+          setSpotOutsideEEZ(true);
+          setEezPopupType("local");
+          setEezPopupOpen(true);
+          return;
+        }
+      } catch {
+        // GEBCO unreachable — show warning (assume ocean)
+        setSpotOutsideEEZ(true);
+        setEezPopupType("local");
+        setEezPopupOpen(true);
+        return;
+      }
     }
     setLocalGroundError(null);
     setLocalGroundLoading(true);
@@ -357,6 +642,7 @@ export default function UnifiedMapControls({ mapRef }: Props) {
         lng,
         spotName.trim() || undefined,
         isNaN(totalKg) ? 0 : totalKg,
+        spotDeparturePort,
       );
       setLocalGroundPred(result);
       // Fly map to the spot
@@ -402,7 +688,7 @@ export default function UnifiedMapControls({ mapRef }: Props) {
     } finally {
       setLocalGroundLoading(false);
     }
-  }, [spotLat, spotLng, spotName, spotTotalKg, mapRef]);
+  }, [spotLat, spotLng, spotName, spotTotalKg, spotDeparturePort, mapRef]);
 
   // Refs to track HTML overlay markers so we can remove them on clear
   const markerRefs = useRef<any[]>([]);
@@ -516,9 +802,13 @@ export default function UnifiedMapControls({ mapRef }: Props) {
     const lat = parseFloat(manualLat);
     const lng = parseFloat(manualLon);
     if (!isNaN(lat) && !isNaN(lng) && eezRef.current) {
-      const outside = !isInsideEEZ(lat, lng, eezRef.current);
+      const onLand = isOnSriLankaLand(lat, lng, landRef.current);
+      const outside = !onLand && !isInsideEEZ(lat, lng, eezRef.current);
       setScanOutsideEEZ(outside);
-      if (outside) { setEezPopupType("hotspot"); setEezPopupOpen(true); }
+      if (outside) {
+        setEezPopupType("hotspot");
+        setEezPopupOpen(true);
+      }
     } else if (!manualLat && !manualLon) {
       if (!startPoint) setScanOutsideEEZ(false);
     }
@@ -617,7 +907,12 @@ export default function UnifiedMapControls({ mapRef }: Props) {
         return;
       }
       // Fallback EEZ guard for destination scan
-      if (eezRef.current && !isInsideEEZ(lat, lng, eezRef.current)) {
+      const onLandDest = isOnSriLankaLand(lat, lng, landRef.current);
+      if (
+        !onLandDest &&
+        eezRef.current &&
+        !isInsideEEZ(lat, lng, eezRef.current)
+      ) {
         setScanOutsideEEZ(true);
         setEezPopupType("hotspot");
         setEezPopupOpen(true);
@@ -633,7 +928,7 @@ export default function UnifiedMapControls({ mapRef }: Props) {
     [manualLat, manualLon, mapRef, nPoints, threshold, species, radiusMult],
   );
 
-  // Step-by-step validation + prediction
+  // Validation + prediction — land checks only on destination scan point (not GPS start)
   async function validateAndRun(
     lat: number,
     lng: number,
@@ -642,105 +937,108 @@ export default function UnifiedMapControls({ mapRef }: Props) {
     setValidating(true);
     setValidationError(null);
 
+    // When scanning from GPS, the lat/lng is the fisherman's own location —
+    // they might be at home / a harbour on land, so we skip land validation.
+    // We only validate the destination scan point (center / manual / destination).
+    const shouldValidateLand = source !== "gps";
+
     const steps: ValidationStep[] = [
-      { label: "Checking if location is in the ocean", status: "running" },
-      { label: "Checking water depth 5 km ahead", status: "pending" },
+      ...(shouldValidateLand
+        ? [
+            {
+              label: "Checking destination is in the ocean…",
+              status: "running" as const,
+            },
+          ]
+        : []),
       {
-        label: `Sampling ${nPoints} pts · ${(calcScanRadius(nPoints) * radiusMult).toFixed(1)} km radius · ~${(SCAN_MIN_SPACING_KM * radiusMult).toFixed(1)} km spacing`,
-        status: "pending",
+        label: `Scanning ${nPoints} pts · ${(calcScanRadius(nPoints) * radiusMult).toFixed(1)} km radius · ~${(SCAN_MIN_SPACING_KM * radiusMult).toFixed(1)} km spacing`,
+        status: shouldValidateLand
+          ? ("pending" as const)
+          : ("running" as const),
       },
     ];
     setValidationSteps([...steps]);
+
+    const scanStepIdx = shouldValidateLand ? 1 : 0;
 
     const update = (index: number, patch: Partial<ValidationStep>) => {
       steps[index] = { ...steps[index], ...patch };
       setValidationSteps([...steps]);
     };
 
-    // ── Step 1: Ocean check via Marine API ──────────────────────
-    try {
-      const marine = await fetchMarineData(lat, lng, {
-        hourly: ["wave_height"],
-      });
-      const waveHourly = marine?.hourly?.wave_height;
-      const hasWaveData =
-        Array.isArray(waveHourly) &&
-        waveHourly.some((v: any) => v !== null && v !== undefined);
-      if (!hasWaveData) {
-        update(0, { status: "fail", detail: "Land point detected" });
-        const landMsg =
-          source === "gps"
-            ? "Your GPS location is on land. Switch to 'Destination' and enter ocean coordinates."
-            : source === "destination"
-              ? "That destination is on land. Enter ocean coordinates (e.g. south of Sri Lanka)."
-              : source === "manual"
-                ? "Those coordinates are on land. Enter a location in open sea."
-                : "Map centre is on land. Pan the map to open sea, then tap 'Scan Map Centre'.";
-        setValidationError(landMsg);
+    // ── Step 1 (destination only): parallel marine + GEBCO land checks ────────
+    if (shouldValidateLand) {
+      const landMsg = (reason: string) =>
+        source === "destination"
+          ? `That destination is on land (${reason}). Enter ocean coordinates (e.g. south of Sri Lanka).`
+          : source === "manual"
+            ? `Those coordinates are on land (${reason}). Enter a location in open sea.`
+            : `Map centre is on land (${reason}). Pan the map to open sea, then tap 'Scan Map Centre'.`;
+
+      const [waveResult, depthResult] = await Promise.allSettled([
+        // Check A — Marine wave API: no wave data = land
+        (async () => {
+          const marine = await fetchMarineData(lat, lng, {
+            hourly: ["wave_height"],
+          });
+          const waveHourly = marine?.hourly?.wave_height;
+          const hasWave =
+            Array.isArray(waveHourly) &&
+            waveHourly.some((v: any) => v !== null && v !== undefined);
+          return { isLand: !hasWave, reason: "no ocean wave data" };
+        })(),
+        // Check B — Backend GEBCO depth: elevation >= 0 = land/above sea level
+        (async () => {
+          const depthData = await getDepth(lat, lng);
+          const elev: number | null = depthData?.value ?? null;
+          const isLand = elev !== null && elev >= 0;
+          return {
+            isLand,
+            reason: isLand
+              ? `elevation ${elev?.toFixed(0)} m above sea level`
+              : "ocean depth confirmed",
+          };
+        })(),
+      ]);
+
+      // Rejected promise = API unreachable — treat as "not land" (benefit of the doubt)
+      const waveIsLand =
+        waveResult.status === "fulfilled" && waveResult.value.isLand;
+      const depthIsLand =
+        depthResult.status === "fulfilled" && depthResult.value.isLand;
+
+      if (waveIsLand || depthIsLand) {
+        const reasons = [
+          waveIsLand && waveResult.status === "fulfilled"
+            ? waveResult.value.reason
+            : null,
+          depthIsLand && depthResult.status === "fulfilled"
+            ? depthResult.value.reason
+            : null,
+        ]
+          .filter(Boolean)
+          .join("; ");
+        update(0, { status: "fail", detail: `Land detected — ${reasons}` });
+        setValidationError(landMsg(reasons));
         setValidating(false);
         return;
       }
-      update(0, {
-        status: "ok",
-        detail: `Wave data confirmed (${waveHourly[0]?.toFixed(1) ?? "?"} m)`,
-      });
-    } catch {
-      update(0, { status: "fail", detail: "Could not reach marine API" });
-      setValidationError(
-        "Could not verify ocean location. Ensure your connection is active.",
-      );
-      setValidating(false);
-      return;
+
+      // Both passed (or unreachable)
+      const passDetails = [
+        waveResult.status === "fulfilled" ? "wave ✓" : "wave skipped",
+        depthResult.status === "fulfilled" && !depthIsLand
+          ? `depth: ${depthResult.value.reason}`
+          : "depth skipped",
+      ].join(" · ");
+      update(0, { status: "ok", detail: passDetails });
     }
 
-    // ── Step 2: Depth check ~5 km north of starting point ───────
-    update(1, { status: "running" });
-    const LAT_5KM = 0.045; // ≈ 5 km in latitude degrees
-    const depthLat = lat + LAT_5KM;
-    try {
-      const depthRes = await fetch(
-        `https://api.opentopodata.org/v1/gebco2020?locations=${depthLat.toFixed(5)},${lng.toFixed(5)}`,
-      );
-      const depthJson = await depthRes.json();
-      const elevation: number | null =
-        depthJson?.results?.[0]?.elevation ?? null;
-      if (elevation === null) {
-        update(1, { status: "fail", detail: "Depth data unavailable" });
-        setValidationError("Could not retrieve depth data. Try again.");
-        setValidating(false);
-        return;
-      }
-      if (elevation >= -10) {
-        update(1, {
-          status: "fail",
-          detail: `Shallow/land area (${elevation.toFixed(0)} m)`,
-        });
-        const shallowMsg =
-          source === "destination"
-            ? `Destination is too shallow (${elevation.toFixed(0)} m). Choose a deeper offshore point.`
-            : source === "manual"
-              ? `Those coordinates are too shallow (${elevation.toFixed(0)} m). Enter a location further offshore.`
-              : `Too shallow (${elevation.toFixed(0)} m) 5 km ahead. Move the map further offshore.`;
-        setValidationError(shallowMsg);
-        setValidating(false);
-        return;
-      }
-      update(1, {
-        status: "ok",
-        detail: `Depth: ${Math.abs(elevation).toFixed(0)} m`,
-      });
-    } catch {
-      // Depth API failure is non-blocking — warn but continue
-      update(1, {
-        status: "ok",
-        detail: "Depth check skipped (API unavailable)",
-      });
-    }
+    // ── Step 2 (always): backend scan — GEBCO filters land points + ML model ──
+    update(scanStepIdx, { status: "running" });
 
-    // ── Step 3: Sample n points, fetch ocean data, run model ─────────────────
-    update(2, { status: "running" });
-
-    // Draw scan-area circle on map so user sees the 10 km bounding box
+    // Draw scan-area circle on map so user sees the scan radius
     const _map = mapRef.current?.getMap();
     if (_map) {
       if (_map.getLayer("scanArea-fill")) _map.removeLayer("scanArea-fill");
@@ -767,7 +1065,7 @@ export default function UnifiedMapControls({ mapRef }: Props) {
           "line-opacity": 0.6,
         },
       });
-      // Fit map to the scan area immediately so the user sees the full bbox
+      // Fit map to scan area so user sees the full bbox
       const DEG = 1 / 111.0;
       const scanR = calcScanRadius(nPoints) * radiusMult;
       const padLat = scanR * DEG * 1.35;
@@ -789,7 +1087,7 @@ export default function UnifiedMapControls({ mapRef }: Props) {
     abortControllerRef.current = abortCtrl;
 
     try {
-      const result = await predictFromPoint({
+      const jobRes = await startPredictJob({
         lat,
         lng,
         species,
@@ -798,12 +1096,51 @@ export default function UnifiedMapControls({ mapRef }: Props) {
         radius_km: calcScanRadius(nPoints) * radiusMult,
         signal: abortCtrl.signal,
       });
+
+      localStorage.setItem(
+        "fishspot_pending_job",
+        JSON.stringify({
+          jobId: jobRes.job_id,
+          context: { lat, lng, species, threshold, nPoints, radiusMult },
+        }),
+      );
+
+      let apiResult = null;
+      while (!abortCtrl.signal.aborted) {
+        const st = await getPredictJobStatus(jobRes.job_id, abortCtrl.signal);
+        if (st.status === "completed") {
+          apiResult = st.result;
+          break;
+        } else if (st.status === "failed") {
+          const e = new Error(st.detail || "Prediction failed");
+          (e as any).response = { data: { detail: st.detail } };
+          throw e;
+        }
+        await new Promise((r) => setTimeout(r, 30000));
+      }
+
+      localStorage.removeItem("fishspot_pending_job");
+      if (abortCtrl.signal.aborted) return;
+
+      const result = apiResult;
       abortControllerRef.current = null;
+
+      // ── Filter out land points ──────────────────────────────────────────
+      // GEBCO depth convention: negative = ocean, positive/zero = land/above sea level.
+      // Keep points where depth is unknown (null/undefined) as benefit of the doubt.
+      const waterPredictions = (result.predictions ?? []).filter(
+        (p: any) => p.depth == null || Number(p.depth) < 0,
+      );
+      result.predictions = waterPredictions;
+      if (result.total_points != null) {
+        result.total_points = waterPredictions.length;
+      }
+
       const high = result.summary?.high ?? 0;
       const best = result.summary?.best_confidence_pct ?? 0;
-      update(2, {
+      update(scanStepIdx, {
         status: "ok",
-        detail: `${result.total_points} pts · best ${best}% · ${high} high confidence`,
+        detail: `${waterPredictions.length} pts (water only) · best ${best}% · ${high} high confidence`,
       });
       setPredictionResult(result);
       plotSampledPoints(result.predictions, { species, threshold, nPoints });
@@ -820,6 +1157,34 @@ export default function UnifiedMapControls({ mapRef }: Props) {
           }),
         );
         setSavedScanAt(ts);
+
+        // Also write the top prediction as the confirmed destination so TripPlanner
+        // shows the same distance as HotspotMap
+        const topPred = result.predictions
+          ?.slice()
+          .sort((a: any, b: any) => b.score - a.score)[0];
+        if (topPred) {
+          localStorage.setItem(
+            "fishspot_confirmed_destination",
+            JSON.stringify({
+              lat: topPred.lat,
+              lng: topPred.lon,
+              label: species,
+            }),
+          );
+          // Always write start location so TripPlanner distance is accurate
+          localStorage.setItem(
+            "fishspot_start_location",
+            JSON.stringify({ lat, lng }),
+          );
+          // Notify HotspotMap so its distance display updates immediately
+          onTopPrediction?.({
+            lat: topPred.lat,
+            lng: topPred.lon,
+            species,
+            probability: topPred.score ?? 0,
+          });
+        }
       } catch {
         /* quota exceeded — not critical */
       }
@@ -861,11 +1226,22 @@ export default function UnifiedMapControls({ mapRef }: Props) {
         err?.name === "AbortError" ||
         err?.name === "CanceledError"
       ) {
-        update(2, { status: "fail", detail: "Scan cancelled" });
+        update(scanStepIdx, { status: "fail", detail: "Scan cancelled" });
         setValidationError(null);
       } else {
-        update(2, { status: "fail", detail: String(err) });
-        setValidationError("Prediction failed: " + String(err));
+        // Prefer the backend's human-readable `detail` field (FastAPI 422/4xx responses)
+        const backendDetail =
+          err?.response?.data?.detail ?? err?.response?.data?.message ?? null;
+        const userMsg = backendDetail
+          ? String(backendDetail)
+          : "Prediction failed: " + String(err?.message ?? err);
+        update(scanStepIdx, {
+          status: "fail",
+          detail: backendDetail
+            ? String(backendDetail).slice(0, 80)
+            : String(err?.message ?? err).slice(0, 80),
+        });
+        setValidationError(userMsg);
       }
     }
     setValidating(false);
@@ -877,6 +1253,12 @@ export default function UnifiedMapControls({ mapRef }: Props) {
   ) {
     const map = mapRef.current?.getMap();
     if (!map) return;
+
+    // Filter land points — depth negative = ocean, positive/0 = land (GEBCO convention)
+    const waterOnly = predictions.filter(
+      (p: any) => p.depth == null || Number(p.depth) < 0,
+    );
+    predictions = waterOnly;
 
     // Remove any old markers first
     markerRefs.current.forEach((m) => m.remove());
@@ -1603,8 +1985,12 @@ export default function UnifiedMapControls({ mapRef }: Props) {
                 <AlertCircle className="h-6 w-6 text-red-400" />
               </div>
               <div>
-                <h2 className="text-base font-extrabold text-red-300 uppercase tracking-wide">⚠ Legal Notice — Outside EEZ</h2>
-                <p className="text-[11px] text-slate-400 mt-0.5">Sri Lanka Exclusive Economic Zone Boundary Violation</p>
+                <h2 className="text-base font-extrabold text-red-300 uppercase tracking-wide">
+                  ⚠ Legal Notice — Outside EEZ
+                </h2>
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  Sri Lanka Exclusive Economic Zone Boundary Violation
+                </p>
               </div>
             </div>
 
@@ -1614,17 +2000,53 @@ export default function UnifiedMapControls({ mapRef }: Props) {
             {/* Body */}
             <div className="space-y-3 text-[12px] text-slate-300 leading-relaxed">
               <p>
-                The selected location is <span className="text-red-400 font-bold">outside Sri Lanka's Exclusive Economic Zone (EEZ)</span>, which extends <span className="font-semibold text-white">200 nautical miles</span> from the coastline.
+                The selected location is{" "}
+                <span className="text-red-400 font-bold">
+                  outside Sri Lanka's Exclusive Economic Zone (EEZ)
+                </span>
+                , which extends{" "}
+                <span className="font-semibold text-white">
+                  200 nautical miles
+                </span>{" "}
+                from the coastline.
               </p>
               <div className="bg-red-500/10 border border-red-500/30 rounded-xl p-3 space-y-1.5 text-[11px]">
-                <p className="font-bold text-red-300 uppercase tracking-wide text-[10px]">Applicable Laws &amp; Regulations</p>
-                <p>🔴 <span className="text-slate-200">Fisheries &amp; Aquatic Resources Act No. 2 of 1996</span> — Sri Lanka</p>
-                <p>🔴 <span className="text-slate-200">UNCLOS Article 62</span> — Rights of access to EEZ</p>
-                <p>🔴 <span className="text-slate-200">IOTC (Indian Ocean Tuna Commission)</span> — Conservation measures</p>
-                <p>🔴 <span className="text-slate-200">Maritime Zones Law No. 22 of 1976</span> — Sri Lanka EEZ limits</p>
+                <p className="font-bold text-red-300 uppercase tracking-wide text-[10px]">
+                  Applicable Laws &amp; Regulations
+                </p>
+                <p>
+                  🔴{" "}
+                  <span className="text-slate-200">
+                    Fisheries &amp; Aquatic Resources Act No. 2 of 1996
+                  </span>{" "}
+                  — Sri Lanka
+                </p>
+                <p>
+                  🔴 <span className="text-slate-200">UNCLOS Article 62</span> —
+                  Rights of access to EEZ
+                </p>
+                <p>
+                  🔴{" "}
+                  <span className="text-slate-200">
+                    IOTC (Indian Ocean Tuna Commission)
+                  </span>{" "}
+                  — Conservation measures
+                </p>
+                <p>
+                  🔴{" "}
+                  <span className="text-slate-200">
+                    Maritime Zones Law No. 22 of 1976
+                  </span>{" "}
+                  — Sri Lanka EEZ limits
+                </p>
               </div>
               <p className="text-[11px] text-amber-300/80">
-                ⚠ Fishing or navigating to fish in this zone without proper international licences may result in <strong className="text-white">vessel seizure, fines, or imprisonment</strong> under Sri Lankan and international maritime law.
+                ⚠ Fishing or navigating to fish in this zone without proper
+                international licences may result in{" "}
+                <strong className="text-white">
+                  vessel seizure, fines, or imprisonment
+                </strong>{" "}
+                under Sri Lankan and international maritime law.
               </p>
               <p className="text-[11px] text-slate-500">
                 {eezPopupType === "local"
@@ -1767,7 +2189,7 @@ export default function UnifiedMapControls({ mapRef }: Props) {
                         Scan Points
                       </label>
                       <div className="grid grid-cols-5 gap-1">
-                        {([1, 5, 10, 15, 20] as const).map((n) => (
+                        {([3, 5, 10, 15, 20] as const).map((n) => (
                           <button
                             key={n}
                             onClick={() => setNPoints(n)}
@@ -1906,11 +2328,23 @@ export default function UnifiedMapControls({ mapRef }: Props) {
                         <div className="flex items-start gap-2 bg-red-500/10 border border-red-500/40 rounded-lg p-2 mb-1">
                           <AlertCircle className="h-3.5 w-3.5 text-red-400 shrink-0 mt-0.5" />
                           <div className="flex-1">
-                            <p className="text-[10px] font-bold text-red-300 uppercase tracking-wide">⚠ Outside Sri Lanka EEZ — Scanning Disabled</p>
-                            <p className="text-[9px] text-red-400/80 mt-0.5 leading-snug">
-                              This location is outside Sri Lanka's Exclusive Economic Zone (200 NM). Scanning is blocked to prevent illegal fishing guidance.
+                            <p className="text-[10px] font-bold text-red-300 uppercase tracking-wide">
+                              ⚠ Outside Sri Lanka EEZ — Scanning Disabled
                             </p>
-                            <button onClick={() => { setEezPopupType("hotspot"); setEezPopupOpen(true); }} className="mt-1 text-[9px] text-red-300 underline underline-offset-2 hover:text-red-200">View legal notice</button>
+                            <p className="text-[9px] text-red-400/80 mt-0.5 leading-snug">
+                              This location is outside Sri Lanka's Exclusive
+                              Economic Zone (200 NM). Scanning is blocked to
+                              prevent illegal fishing guidance.
+                            </p>
+                            <button
+                              onClick={() => {
+                                setEezPopupType("hotspot");
+                                setEezPopupOpen(true);
+                              }}
+                              className="mt-1 text-[9px] text-red-300 underline underline-offset-2 hover:text-red-200"
+                            >
+                              View legal notice
+                            </button>
                           </div>
                         </div>
                       )}
@@ -2220,165 +2654,92 @@ export default function UnifiedMapControls({ mapRef }: Props) {
                     </div>
                   )}
 
-                  {/* ── Scan Mode Selector ────────────────────────────────── */}
+                  {/* ── Destination Scan ──────────────────────────────────── */}
                   <div className="space-y-2 mt-2">
-                    <div className="grid grid-cols-2 gap-1 bg-slate-900/70 rounded-xl p-1 border border-slate-700/50">
+                    <div className="space-y-2 bg-slate-900/60 rounded-xl p-2.5 border border-violet-500/20">
+                      <p className="text-[9px] text-violet-300/70 uppercase font-bold tracking-wide flex items-center gap-1">
+                        <MapPin className="h-3 w-3" />
+                        Enter destination coordinates
+                      </p>
+
+                      {/* Pick on map button */}
                       <button
-                        onClick={() => {
-                          setScanMode("start");
-                          setValidationError(null);
-                        }}
-                        className={`flex items-center justify-center gap-1.5 py-2 rounded-lg text-[11px] font-bold transition-all ${
-                          scanMode === "start"
-                            ? "bg-emerald-500 text-slate-900 shadow-lg shadow-emerald-500/20"
-                            : "text-slate-400 hover:text-slate-200"
-                        }`}
-                      >
-                        <Navigation className="h-3.5 w-3.5" />
-                        Start Point
-                      </button>
-                      <button
-                        onClick={() => {
-                          setScanMode("destination");
-                          setValidationError(null);
-                        }}
-                        className={`flex items-center justify-center gap-1.5 py-2 rounded-lg text-[11px] font-bold transition-all ${
-                          scanMode === "destination"
-                            ? "bg-violet-500 text-white shadow-lg shadow-violet-500/20"
-                            : "text-slate-400 hover:text-slate-200"
+                        onClick={() => setPickingDestination((v) => !v)}
+                        disabled={validating}
+                        className={`w-full flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-bold transition-all border ${
+                          pickingDestination
+                            ? "bg-violet-500/30 border-violet-400 text-violet-200 animate-pulse"
+                            : "bg-slate-800 border-slate-600 text-slate-300 hover:border-violet-500/60 hover:text-violet-300"
                         }`}
                       >
                         <MapPin className="h-3.5 w-3.5" />
-                        Destination
+                        {pickingDestination
+                          ? "Click anywhere on the map…"
+                          : "Pick on Map"}
                       </button>
+
+                      <div className="flex items-center gap-1.5">
+                        <div className="flex-1 h-px bg-slate-700" />
+                        <span className="text-[9px] text-slate-600">
+                          or type
+                        </span>
+                        <div className="flex-1 h-px bg-slate-700" />
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-1.5">
+                        <div>
+                          <label className="text-[9px] text-slate-500 block mb-1">
+                            Latitude (°N)
+                          </label>
+                          <input
+                            type="number"
+                            step="0.0001"
+                            placeholder="e.g. 7.5200"
+                            value={manualLat}
+                            onChange={(e) => setManualLat(e.target.value)}
+                            className="w-full bg-slate-800 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-slate-200 placeholder-slate-600 focus:outline-none focus:border-violet-500 font-mono"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-[9px] text-slate-500 block mb-1">
+                            Longitude (°E)
+                          </label>
+                          <input
+                            type="number"
+                            step="0.0001"
+                            placeholder="e.g. 81.8000"
+                            value={manualLon}
+                            onChange={(e) => setManualLon(e.target.value)}
+                            className="w-full bg-slate-800 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-slate-200 placeholder-slate-600 focus:outline-none focus:border-violet-500 font-mono"
+                          />
+                        </div>
+                      </div>
+                      <button
+                        onClick={() => runFromManual("destination")}
+                        disabled={
+                          validating ||
+                          !manualLat ||
+                          !manualLon ||
+                          scanOutsideEEZ
+                        }
+                        className="w-full bg-violet-500 hover:bg-violet-400 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold py-2 rounded-lg text-xs flex items-center justify-center gap-1.5 transition-colors shadow-lg shadow-violet-500/20"
+                      >
+                        {validating ? (
+                          <>
+                            <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                            <span>Scanning…</span>
+                          </>
+                        ) : (
+                          <>
+                            <MapPin className="h-3.5 w-3.5" />
+                            <span>Scan Around Destination</span>
+                          </>
+                        )}
+                      </button>
+                      <p className="text-[9px] text-slate-600 text-center">
+                        {nPoints} ocean points scanned around your destination
+                      </p>
                     </div>
-
-                    {/* Start Point mode */}
-                    {scanMode === "start" && (
-                      <div className="grid grid-cols-2 gap-2 animate-in fade-in duration-150">
-                        <button
-                          onClick={runFromMapCenter}
-                          disabled={validating || gpsLoading || scanOutsideEEZ}
-                          className="bg-emerald-500 hover:bg-emerald-400 disabled:opacity-50 disabled:cursor-not-allowed text-slate-900 font-bold py-2.5 rounded-lg transition-all shadow-lg shadow-emerald-500/20 text-xs flex items-center justify-center gap-1.5"
-                        >
-                          {validating ? (
-                            <>
-                              <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-                              <span>Scanning…</span>
-                            </>
-                          ) : (
-                            <>
-                              <Navigation className="h-3.5 w-3.5" />
-                              <span>Map Centre</span>
-                            </>
-                          )}
-                        </button>
-                        <button
-                          onClick={runFromGPS}
-                          disabled={validating || gpsLoading || scanOutsideEEZ}
-                          className="bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 disabled:opacity-50 disabled:cursor-not-allowed text-emerald-300 font-bold py-2.5 rounded-lg transition-all text-xs flex items-center justify-center gap-1.5"
-                        >
-                          {gpsLoading ? (
-                            <>
-                              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                              <span>Getting GPS…</span>
-                            </>
-                          ) : (
-                            <>
-                              <Locate className="h-3.5 w-3.5" />
-                              <span>My Location</span>
-                            </>
-                          )}
-                        </button>
-                        <p className="col-span-2 text-[9px] text-slate-600 text-center">
-                          {nPoints} ocean points scanned around your current
-                          position
-                        </p>
-                      </div>
-                    )}
-
-                    {/* Destination mode */}
-                    {scanMode === "destination" && (
-                      <div className="space-y-2 animate-in fade-in duration-150 bg-slate-900/60 rounded-xl p-2.5 border border-violet-500/20">
-                        <p className="text-[9px] text-violet-300/70 uppercase font-bold tracking-wide flex items-center gap-1">
-                          <MapPin className="h-3 w-3" />
-                          Enter destination coordinates
-                        </p>
-
-                        {/* Pick on map button */}
-                        <button
-                          onClick={() => setPickingDestination((v) => !v)}
-                          disabled={validating}
-                          className={`w-full flex items-center justify-center gap-1.5 py-2 rounded-lg text-xs font-bold transition-all border ${
-                            pickingDestination
-                              ? "bg-violet-500/30 border-violet-400 text-violet-200 animate-pulse"
-                              : "bg-slate-800 border-slate-600 text-slate-300 hover:border-violet-500/60 hover:text-violet-300"
-                          }`}
-                        >
-                          <MapPin className="h-3.5 w-3.5" />
-                          {pickingDestination
-                            ? "Click anywhere on the map…"
-                            : "Pick on Map"}
-                        </button>
-
-                        <div className="flex items-center gap-1.5">
-                          <div className="flex-1 h-px bg-slate-700" />
-                          <span className="text-[9px] text-slate-600">
-                            or type
-                          </span>
-                          <div className="flex-1 h-px bg-slate-700" />
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-1.5">
-                          <div>
-                            <label className="text-[9px] text-slate-500 block mb-1">
-                              Latitude (°N)
-                            </label>
-                            <input
-                              type="number"
-                              step="0.0001"
-                              placeholder="e.g. 7.5200"
-                              value={manualLat}
-                              onChange={(e) => setManualLat(e.target.value)}
-                              className="w-full bg-slate-800 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-slate-200 placeholder-slate-600 focus:outline-none focus:border-violet-500 font-mono"
-                            />
-                          </div>
-                          <div>
-                            <label className="text-[9px] text-slate-500 block mb-1">
-                              Longitude (°E)
-                            </label>
-                            <input
-                              type="number"
-                              step="0.0001"
-                              placeholder="e.g. 81.8000"
-                              value={manualLon}
-                              onChange={(e) => setManualLon(e.target.value)}
-                              className="w-full bg-slate-800 border border-slate-700 rounded-lg px-2 py-1.5 text-xs text-slate-200 placeholder-slate-600 focus:outline-none focus:border-violet-500 font-mono"
-                            />
-                          </div>
-                        </div>
-                        <button
-                          onClick={() => runFromManual("destination")}
-                          disabled={validating || !manualLat || !manualLon || scanOutsideEEZ}
-                          className="w-full bg-violet-500 hover:bg-violet-400 disabled:opacity-40 disabled:cursor-not-allowed text-white font-bold py-2 rounded-lg text-xs flex items-center justify-center gap-1.5 transition-colors shadow-lg shadow-violet-500/20"
-                        >
-                          {validating ? (
-                            <>
-                              <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-                              <span>Scanning…</span>
-                            </>
-                          ) : (
-                            <>
-                              <MapPin className="h-3.5 w-3.5" />
-                              <span>Scan Around Destination</span>
-                            </>
-                          )}
-                        </button>
-                        <p className="text-[9px] text-slate-600 text-center">
-                          {nPoints} ocean points scanned around your destination
-                        </p>
-                      </div>
-                    )}
                   </div>
                 </div>
               </TabsContent>
@@ -2419,11 +2780,26 @@ export default function UnifiedMapControls({ mapRef }: Props) {
                         title="Save spot to My Spots"
                         className="bg-emerald-500/20 hover:bg-emerald-500/30 border border-emerald-500/40 text-emerald-400 rounded-lg px-2.5 flex items-center gap-1 text-[10px] font-bold transition-colors disabled:opacity-50"
                       >
-                        {spotsSaving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />}
+                        {spotsSaving ? (
+                          <Loader2 className="h-3 w-3 animate-spin" />
+                        ) : (
+                          <Plus className="h-3 w-3" />
+                        )}
                         Save
                       </button>
+                      <button
+                        onClick={clearLocalGroundInputs}
+                        type="button"
+                        title="Clear local ground form"
+                        className="bg-slate-900 hover:bg-slate-800 border border-slate-700 text-slate-300 rounded-lg px-2.5 flex items-center gap-1 text-[10px] font-bold transition-colors"
+                      >
+                        <Trash2 className="h-3 w-3" />
+                        Clear
+                      </button>
                     </div>
-                    {spotsError && <p className="text-[9px] text-red-400">{spotsError}</p>}
+                    {spotsError && (
+                      <p className="text-[9px] text-red-400">{spotsError}</p>
+                    )}
                   </div>
 
                   {/* My Spots dropdown */}
@@ -2433,7 +2809,8 @@ export default function UnifiedMapControls({ mapRef }: Props) {
                     </label>
                     {savedSpots.length === 0 ? (
                       <p className="text-[9px] text-slate-600 italic">
-                        No saved spots yet. Enter a name + coordinates and click Save.
+                        No saved spots yet. Enter a name + coordinates and click
+                        Save.
                       </p>
                     ) : (
                       <div className="relative">
@@ -2442,30 +2819,50 @@ export default function UnifiedMapControls({ mapRef }: Props) {
                           className="w-full flex items-center justify-between bg-slate-900 border border-slate-700 hover:border-emerald-500/50 rounded-lg px-3 py-1.5 text-xs text-slate-300 transition-colors"
                         >
                           <span className="truncate">
-                            {savedSpots.find((s) => s.name === spotName) ? spotName : "Select a saved spot…"}
+                            {savedSpots.find((s) => s.name === spotName)
+                              ? spotName
+                              : "Select a saved spot…"}
                           </span>
-                          <ChevronDownIcon className={`h-3 w-3 ml-2 shrink-0 transition-transform ${spotsDropdownOpen ? "rotate-180" : ""}`} />
+                          <ChevronDownIcon
+                            className={`h-3 w-3 ml-2 shrink-0 transition-transform ${spotsDropdownOpen ? "rotate-180" : ""}`}
+                          />
                         </button>
                         {spotsDropdownOpen && (
                           <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-slate-900 border border-slate-700 rounded-xl shadow-xl overflow-hidden max-h-48 overflow-y-auto">
                             {savedSpots.map((s) => (
-                              <div key={s.id} className="flex items-center group hover:bg-slate-800 transition-colors">
+                              <div
+                                key={s.id}
+                                className="flex items-center group hover:bg-slate-800 transition-colors"
+                              >
                                 <button
                                   className="flex-1 text-left px-3 py-2 text-xs text-slate-200 truncate"
                                   onClick={() => {
                                     setSpotName(s.name);
                                     setSpotLat(String(s.lat));
                                     setSpotLng(String(s.lng));
-                                    setSpotTotalKg(s.total_kg > 0 ? String(s.total_kg) : "");
+                                    setSpotTotalKg(
+                                      s.total_kg > 0 ? String(s.total_kg) : "",
+                                    );
                                     setSpotsDropdownOpen(false);
                                   }}
                                 >
-                                  <span className="font-semibold">{s.name}</span>
-                                  <span className="ml-2 text-slate-500 text-[9px]">{s.lat.toFixed(3)}, {s.lng.toFixed(3)}</span>
-                                  {s.total_kg > 0 && <span className="ml-1 text-emerald-500 text-[9px]">· {s.total_kg}kg</span>}
+                                  <span className="font-semibold">
+                                    {s.name}
+                                  </span>
+                                  <span className="ml-2 text-slate-500 text-[9px]">
+                                    {s.lat.toFixed(3)}, {s.lng.toFixed(3)}
+                                  </span>
+                                  {s.total_kg > 0 && (
+                                    <span className="ml-1 text-emerald-500 text-[9px]">
+                                      · {s.total_kg}kg
+                                    </span>
+                                  )}
                                 </button>
                                 <button
-                                  onClick={(e) => { e.stopPropagation(); handleDeleteSpot(s.id); }}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleDeleteSpot(s.id);
+                                  }}
                                   className="px-2 opacity-0 group-hover:opacity-100 text-slate-600 hover:text-red-400 transition-all"
                                   title="Remove spot"
                                 >
@@ -2477,6 +2874,24 @@ export default function UnifiedMapControls({ mapRef }: Props) {
                         )}
                       </div>
                     )}
+                  </div>
+
+                  {/* Departure harbour */}
+                  <div className="space-y-1">
+                    <label className="text-[10px] uppercase font-bold text-slate-500">
+                      Departure Harbour
+                    </label>
+                    <select
+                      value={spotDeparturePort}
+                      onChange={(e) => setSpotDeparturePort(e.target.value)}
+                      className="w-full bg-slate-900 border border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-200 focus:outline-none focus:border-emerald-500 transition-colors"
+                    >
+                      {DEPARTURE_HARBORS.map((harbor) => (
+                        <option key={harbor} value={harbor}>
+                          {harbor}
+                        </option>
+                      ))}
+                    </select>
                   </div>
 
                   {/* Lat / Lng */}
@@ -2514,11 +2929,23 @@ export default function UnifiedMapControls({ mapRef }: Props) {
                     <div className="flex items-start gap-2 bg-red-500/10 border border-red-500/40 rounded-lg p-2.5">
                       <AlertCircle className="h-4 w-4 text-red-400 shrink-0 mt-0.5" />
                       <div className="flex-1">
-                        <p className="text-[10px] font-bold text-red-300 uppercase tracking-wide">⚠ Outside Sri Lanka EEZ — Prediction Disabled</p>
-                        <p className="text-[9px] text-red-400/80 mt-0.5 leading-snug">
-                          This location is outside Sri Lanka's Exclusive Economic Zone (200 NM). Prediction is blocked to prevent illegal fishing guidance.
+                        <p className="text-[10px] font-bold text-red-300 uppercase tracking-wide">
+                          ⚠ Outside Sri Lanka EEZ — Prediction Disabled
                         </p>
-                        <button onClick={() => { setEezPopupType("local"); setEezPopupOpen(true); }} className="mt-1 text-[9px] text-red-300 underline underline-offset-2 hover:text-red-200">View legal notice</button>
+                        <p className="text-[9px] text-red-400/80 mt-0.5 leading-snug">
+                          This location is outside Sri Lanka's Exclusive
+                          Economic Zone (200 NM). Prediction is blocked to
+                          prevent illegal fishing guidance.
+                        </p>
+                        <button
+                          onClick={() => {
+                            setEezPopupType("local");
+                            setEezPopupOpen(true);
+                          }}
+                          className="mt-1 text-[9px] text-red-300 underline underline-offset-2 hover:text-red-200"
+                        >
+                          View legal notice
+                        </button>
                       </div>
                     </div>
                   )}

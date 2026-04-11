@@ -23,7 +23,6 @@ import {
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { marketApi, type SpeciesMeta } from "@/services/marketApi";
-import { getCurrentMonsoon } from "@/services/mockData";
 
 const HOTSPOT_LS_KEY = "fishspot_hotspot_scan";
 
@@ -102,6 +101,14 @@ function levelLabel(level: string): string {
   if (level === "core_hotspot") return "Core";
   if (level === "candidate_hotspot") return "Candidate";
   return "Low";
+}
+
+function getCurrentMonsoon(): string {
+  const month = new Date().getMonth() + 1; // 1-12
+  if (month === 12 || month <= 3) return "Northeast Monsoon";
+  if (month <= 5) return "First Inter-Monsoon";
+  if (month <= 9) return "Southwest Monsoon";
+  return "Second Inter-Monsoon";
 }
 
 export default function Dashboard() {

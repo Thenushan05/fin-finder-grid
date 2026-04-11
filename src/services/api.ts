@@ -6,7 +6,7 @@ const BASE = (import.meta as any).env?.VITE_API_BASE || "http://localhost:8000";
 
 const api = axios.create({
   baseURL: BASE,
-  timeout: 300_000, // 5 minutes for Copernicus data fetching
+  timeout: 600_000, // 10 minutes for Copernicus data fetching
 });
 // Allow cross-site cookies (httpOnly set by backend)
 api.defaults.withCredentials = true;
@@ -48,7 +48,7 @@ export async function postRegionPrediction(body: any) {
   if (payload && payload.bbox) {
     // Region-based prediction with bbox (longer timeout for Copernicus API)
     const res = await api.post("/api/v1/hotspots/predict-region", payload, {
-      timeout: 300_000, // 5 minutes
+      timeout: 600_000, // 10 minutes
     });
     return res.data;
   }
@@ -295,12 +295,14 @@ export async function predictLocalGround(
   lng: number,
   name?: string,
   total_kg_latest: number = 0,
+  departure_port?: string,
 ) {
   const res = await api.post("/api/v1/localground/predict", {
     lat,
     lng,
     name,
     total_kg_latest,
+    departure_port,
   });
   return res.data as {
     name: string | null;
@@ -309,7 +311,16 @@ export async function predictLocalGround(
     score: number;
     p_hotspot: number;
     level: "High" | "Moderate" | "Low";
-    weather: { wind_speed: number; pressure: number; precip: number };
+    weather: {
+      weather_code: number;
+      wind_speed: number;
+      wind_direction_10m: number;
+      pressure: number;
+      precip: number;
+      cloud_cover: number;
+      temperature_2m: number;
+      relative_humidity_2m: number;
+    };
     features_used: Record<string, number | string>;
   };
 }
@@ -372,6 +383,45 @@ export async function predictFromPoint({
     },
     { signal },
   );
+  return res.data;
+}
+
+export async function startPredictJob({
+  lat,
+  lng,
+  species = "YFT",
+  threshold = 0.4,
+  n_points = 20,
+  radius_km = 10.0,
+  signal,
+}: {
+  lat: number;
+  lng: number;
+  species?: string;
+  threshold?: number;
+  n_points?: number;
+  radius_km?: number;
+  signal?: AbortSignal;
+}) {
+  const res = await api.post(
+    "/api/v1/hotspots/predict-from-point-job",
+    {
+      lat,
+      lon: lng,
+      species,
+      threshold,
+      n_points,
+      radius_km,
+    },
+    { signal },
+  );
+  return res.data;
+}
+
+export async function getPredictJobStatus(jobId: string, signal?: AbortSignal) {
+  const res = await api.get(`/api/v1/hotspots/predict-job/${jobId}`, {
+    signal,
+  });
   return res.data;
 }
 

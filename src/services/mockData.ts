@@ -1,17 +1,9 @@
 /**
  * Static reference data for Sri Lankan pelagic fisheries.
  *
- * FishSpecies and GearType are scientific/catalogue data — not placeholder
- * values. They represent real species biology and gear categories used in the
- * Sri Lankan fishing industry and are used throughout the app for species
- * lookup, camera identification mapping, and gear recommendations.
- *
- * NOTE: WeatherHazard type has been moved to @/lib/hazardClassification.
+ * These catalogs back pages that need baseline species and gear metadata.
  */
 
-// ---------------------------------------------------------------------------
-// Species
-// ---------------------------------------------------------------------------
 export interface FishSpecies {
   id: string;
   name: string;
@@ -37,7 +29,7 @@ export const mockSpecies: FishSpecies[] = [
     recommendedGear: ["Longlining", "Trolling", "Purse Seine"],
     sustainabilityStatus: "Moderate",
     description:
-      "Highly migratory pelagic species. Sri Lanka's most commercially important tuna. Found in warm tropical waters year-round with peak abundance during the Southwest Monsoon.",
+      "Highly migratory pelagic species and a core commercial tuna in Sri Lankan waters.",
   },
   {
     id: "bet",
@@ -50,7 +42,7 @@ export const mockSpecies: FishSpecies[] = [
     recommendedGear: ["Longlining", "Deep-set Longline"],
     sustainabilityStatus: "Moderate",
     description:
-      "Deep-swimming tuna species that migrates vertically. Prefers slightly cooler surface water compared to yellowfin. Highly valued for sashimi markets.",
+      "Deep-swimming tuna species that prefers slightly cooler surface conditions.",
   },
   {
     id: "skj",
@@ -63,7 +55,7 @@ export const mockSpecies: FishSpecies[] = [
     recommendedGear: ["Purse Seine", "Pole & Line", "Trolling"],
     sustainabilityStatus: "Good",
     description:
-      "Most abundant tuna in Sri Lankan waters. Surface-schooling species concentrated near warm upwelling zones. Key target of artisanal and semi-industrial fleets.",
+      "Surface-schooling tuna commonly targeted by artisanal and semi-industrial fleets.",
   },
   {
     id: "swo",
@@ -76,7 +68,7 @@ export const mockSpecies: FishSpecies[] = [
     recommendedGear: ["Longlining", "Harpoon"],
     sustainabilityStatus: "Moderate",
     description:
-      "Solitary predator found in offshore deep waters. Active at night near the surface, diving deep during the day. Seasonal visitor to Sri Lankan EEZ.",
+      "Offshore predator active near the surface at night and deeper during daylight.",
   },
   {
     id: "mahi",
@@ -89,7 +81,7 @@ export const mockSpecies: FishSpecies[] = [
     recommendedGear: ["Trolling", "Handline", "Driftnet"],
     sustainabilityStatus: "Good",
     description:
-      "Fast-growing surface-dwelling species associated with drifting debris and floating objects. Fast reproduction makes it resilient to fishing pressure.",
+      "Fast-growing pelagic species often associated with floating objects.",
   },
   {
     id: "bum",
@@ -102,7 +94,7 @@ export const mockSpecies: FishSpecies[] = [
     recommendedGear: ["Trolling", "Longlining"],
     sustainabilityStatus: "At Risk",
     description:
-      "Apex predator of the Indian Ocean. Long-distance migrant reaching over 300 kg. Targeted by sport fishers; bycatch in tuna longlines. Stocks under pressure.",
+      "Apex predator and long-distance migrant; stocks can be sensitive to pressure.",
   },
   {
     id: "alb",
@@ -114,8 +106,7 @@ export const mockSpecies: FishSpecies[] = [
     spawningMonths: [6, 7, 8, 9],
     recommendedGear: ["Longlining", "Trolling", "Pole & Line"],
     sustainabilityStatus: "Good",
-    description:
-      "Prefers cooler sub-tropical waters. Seasonal in Sri Lankan waters, more common during northeast monsoon when cooler upwelling occurs off the east coast.",
+    description: "Seasonal tuna species preferring cooler water masses.",
   },
   {
     id: "wah",
@@ -127,8 +118,7 @@ export const mockSpecies: FishSpecies[] = [
     spawningMonths: [1, 2, 3, 4, 5, 6],
     recommendedGear: ["Trolling", "Handline"],
     sustainabilityStatus: "Good",
-    description:
-      "One of the fastest fish in the ocean. Solitary hunter of offshore reefs and FADs. Popular for sport fishing along Sri Lanka's southern and western coasts.",
+    description: "Fast pelagic hunter popular with offshore fishers.",
   },
   {
     id: "kin",
@@ -141,13 +131,10 @@ export const mockSpecies: FishSpecies[] = [
     recommendedGear: ["Trolling", "Gillnet", "Handline"],
     sustainabilityStatus: "Moderate",
     description:
-      "Highly prized coastal pelagic species. Abundant in Sri Lankan waters throughout the year. Important for artisanal fishers and domestic markets.",
+      "High-value coastal pelagic species with year-round relevance.",
   },
 ];
 
-// ---------------------------------------------------------------------------
-// Gear
-// ---------------------------------------------------------------------------
 export interface GearType {
   id: string;
   name: string;
@@ -176,7 +163,7 @@ export const mockGear: GearType[] = [
       "Albacore",
       "Blue Marlin",
     ],
-    depthRange: "50–400 m",
+    depthRange: "50-400 m",
     selectivity: "Medium",
     bycatchRisk: "Medium",
     status: "Recommended",
@@ -199,7 +186,7 @@ export const mockGear: GearType[] = [
       "Wahoo",
       "King Mackerel",
     ],
-    depthRange: "0–50 m",
+    depthRange: "0-50 m",
     selectivity: "High",
     bycatchRisk: "Low",
     status: "Recommended",
@@ -209,7 +196,7 @@ export const mockGear: GearType[] = [
     name: "Purse Seine",
     code: "PS",
     targetSpecies: ["SKJ", "YFT", "Skipjack Tuna", "Yellowfin Tuna"],
-    depthRange: "0–200 m",
+    depthRange: "0-200 m",
     selectivity: "Low",
     bycatchRisk: "High",
     status: "Regulated",
@@ -219,7 +206,7 @@ export const mockGear: GearType[] = [
     name: "Pole & Line",
     code: "PL",
     targetSpecies: ["SKJ", "ALB", "Skipjack Tuna", "Albacore"],
-    depthRange: "0–100 m",
+    depthRange: "0-100 m",
     selectivity: "High",
     bycatchRisk: "Low",
     status: "Recommended",
@@ -236,7 +223,7 @@ export const mockGear: GearType[] = [
       "Wahoo",
       "King Mackerel",
     ],
-    depthRange: "0–150 m",
+    depthRange: "0-150 m",
     selectivity: "High",
     bycatchRisk: "Low",
     status: "Recommended",
@@ -255,19 +242,15 @@ export const mockGear: GearType[] = [
       "Mahi-mahi",
       "King Mackerel",
     ],
-    depthRange: "0–100 m",
+    depthRange: "0-100 m",
     selectivity: "Medium",
     bycatchRisk: "Medium",
     status: "Regulated",
   },
 ];
 
-// ---------------------------------------------------------------------------
-// Monsoon utility
-// ---------------------------------------------------------------------------
-/** Returns the current Sri Lankan monsoon season name based on the calendar month. */
 export function getCurrentMonsoon(): string {
-  const m = new Date().getMonth() + 1; // 1-based
+  const m = new Date().getMonth() + 1;
   if (m === 12 || m <= 3) return "Northeast Monsoon";
   if (m <= 5) return "First Inter-Monsoon";
   if (m <= 9) return "Southwest Monsoon";

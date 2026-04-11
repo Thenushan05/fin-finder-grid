@@ -33,9 +33,9 @@ import {
   RefreshCw,
   MapPin,
   CalendarCheck,
-  Anchor,
   CloudLightning,
   Waves,
+  X,
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import {
@@ -50,13 +50,6 @@ import {
   getRouteSeaConditions,
   SeaCondition,
 } from "@/services/weatherConditions";
-
-const HARBORS = {
-  colombo: { lat: 6.9271, lng: 79.8612, name: "Colombo Harbor" },
-  galle: { lat: 6.0535, lng: 80.221, name: "Galle Harbor" },
-  trinco: { lat: 8.5874, lng: 81.2152, name: "Trincomalee Harbor" },
-  negombo: { lat: 7.2008, lng: 79.8737, name: "Negombo Harbor" },
-};
 
 const SAFETY_ITEMS = [
   { id: "lifejackets", label: "Life Jackets (All Crew)", checked: false },
@@ -75,8 +68,6 @@ export default function TripPlanner() {
   // Trip Config State
   const [fuelRate, setFuelRate] = useState("25"); // L/hr base
   const [selectedHotspots, setSelectedHotspots] = useState<number[]>([0]);
-  const [selectedHarbor, setSelectedHarbor] =
-    useState<keyof typeof HARBORS>("colombo");
 
   // Vessel & Logistics State
   const [tankCapacity, setTankCapacity] = useState("500"); // Liters
@@ -105,6 +96,12 @@ export default function TripPlanner() {
     Array<{ lat: number; lng: number; species: string }>
   >([]);
 
+  // Start location from HotspotMap GPS — overrides the harbor selector
+  const [startLocation, setStartLocation] = useState<{
+    lat: number;
+    lng: number;
+  } | null>(null);
+
   // Load vessels on component mount
   const loadVessels = async () => {
     setIsLoadingVessels(true);
@@ -130,23 +127,101 @@ export default function TripPlanner() {
     loadVessels();
   }, [toast]);
 
-  // Load hotspot predictions from localStorage (populated by map scan)
+  // Auto-fill tank capacity from selected vessel details
   useEffect(() => {
+    if (!selectedVessel || vessels.length === 0) return;
+    const v = vessels.find((x) => (x._id || x.name) === selectedVessel);
+    if (!v) return;
+
+    // AddVesselDialog shape: specifications.fuelCapacity
+    const fromSpec = v.specifications?.fuelCapacity;
+    if (fromSpec && parseFloat(fromSpec) > 0) {
+      setTankCapacity(String(fromSpec));
+      return;
+    }
+    // UnifiedMaintenance shape: stats.fuelOnBoard e.g. "8,000 L"
+    const fromStats = v.stats?.fuelOnBoard;
+    if (fromStats) {
+      const parsed = parseFloat(String(fromStats).replace(/[^0-9.]/g, ""));
+      if (!isNaN(parsed) && parsed > 0) {
+        setTankCapacity(String(parsed));
+        return;
+      }
+    }
+  }, [selectedVessel, vessels]);
+
+  // Load hotspot predictions from localStorage (populated by map scan)
+  // Also picks up any manually confirmed destination from the Hotspot Map
+  const loadFromStorage = () => {
     try {
+      // 1. Scan predictions from hotspot scan
+      let preds: { lat: number; lng: number; species: string }[] = [];
       const raw = localStorage.getItem("fishspot_hotspot_scan");
       if (raw) {
         const parsed = JSON.parse(raw);
-        const preds: any[] = parsed?.result?.predictions ?? [];
+        const rawPreds: any[] = parsed?.result?.predictions ?? [];
         const species: string = parsed?.meta?.species ?? "Fishing Ground";
-        setScanPredictions(
-          preds
-            .sort((a: any, b: any) => b.score - a.score)
-            .map((p: any) => ({ lat: p.lat, lng: p.lon, species })),
-        );
+        preds = rawPreds
+          .sort((a: any, b: any) => b.score - a.score)
+          .map((p: any) => ({ lat: p.lat, lng: p.lon, species }));
+      }
+
+      // 2. Manually confirmed destination from map — prepend it so it shows as primary target
+      const rawDest = localStorage.getItem("fishspot_confirmed_destination");
+      if (rawDest) {
+        const dest = JSON.parse(rawDest);
+        if (dest?.lat && dest?.lng) {
+          preds = preds.filter(
+            (p) =>
+              Math.abs(p.lat - dest.lat) > 0.0001 ||
+              Math.abs(p.lng - dest.lng) > 0.0001,
+          );
+          preds.unshift({
+            lat: dest.lat,
+            lng: dest.lng,
+            species: dest.label ?? "Map Destination",
+          });
+        }
+      }
+
+      if (preds.length > 0) setScanPredictions(preds);
+      else setScanPredictions([]);
+
+      // 3. Load GPS start location from HotspotMap
+      //    Prefer explicit GPS location; fallback to startPoint saved with the scan
+      const rawStart = localStorage.getItem("fishspot_start_location");
+      if (rawStart) {
+        const start = JSON.parse(rawStart);
+        if (start?.lat && start?.lng) {
+          setStartLocation(start);
+        }
+      } else if (raw) {
+        // fallback: use the scan's own startPoint
+        try {
+          const scanStartPoint = JSON.parse(raw)?.startPoint;
+          if (scanStartPoint?.lat && scanStartPoint?.lng) {
+            setStartLocation({
+              lat: scanStartPoint.lat,
+              lng: scanStartPoint.lng,
+            });
+          }
+        } catch {
+          /* ignore */
+        }
       }
     } catch {
       /* ignore corrupted localStorage */
     }
+  };
+
+  const clearDestination = () => {
+    localStorage.removeItem("fishspot_confirmed_destination");
+    localStorage.removeItem("fishspot_hotspot_scan");
+    setScanPredictions([]);
+  };
+
+  useEffect(() => {
+    loadFromStorage();
   }, []);
 
   // Calculate fuel consumption when parameters change
@@ -154,21 +229,20 @@ export default function TripPlanner() {
     if (useRealCalculation && selectedVessel && selectedHotspots.length > 0) {
       calculateRealFuelConsumption();
     }
-  }, [selectedHotspots, selectedHarbor, selectedVessel, useRealCalculation]);
+  }, [selectedHotspots, selectedVessel, useRealCalculation, startLocation]);
 
   // Fetch weather conditions when parameters change
   useEffect(() => {
     if (useRealWeather && selectedHotspots.length > 0) {
       fetchWeatherConditions();
     }
-  }, [selectedHotspots, selectedHarbor, useRealWeather]);
+  }, [selectedHotspots, useRealWeather, startLocation]);
 
   const fetchWeatherConditions = async () => {
     setIsLoadingWeather(true);
     try {
-      // Build coordinates for weather sampling
-      const harbor = HARBORS[selectedHarbor];
-      const coordinates = [harbor];
+      if (!startLocation) return;
+      const coordinates = [startLocation];
 
       selectedHotspots.forEach((idx) => {
         const hotspot = scanPredictions[idx];
@@ -180,7 +254,7 @@ export default function TripPlanner() {
           });
       });
 
-      coordinates.push(harbor); // return journey
+      coordinates.push(startLocation); // return journey
 
       const weatherCondition = await getRouteSeaConditions(coordinates);
       setRealWeatherCondition(weatherCondition);
@@ -207,9 +281,8 @@ export default function TripPlanner() {
 
     setIsCalculating(true);
     try {
-      // Build coordinates array: harbor -> hotspots -> harbor
-      const harbor = HARBORS[selectedHarbor];
-      const coordinates = [harbor];
+      if (!startLocation) return;
+      const coordinates = [startLocation];
 
       // Add selected hotspots
       selectedHotspots.forEach((idx) => {
@@ -222,8 +295,8 @@ export default function TripPlanner() {
           });
       });
 
-      // Return to harbor
-      coordinates.push(harbor);
+      // Return to start
+      coordinates.push(startLocation);
 
       // Try to find a matching fuel vessel for calculation
       // This is needed because the fuel API expects vessel_id from fuel database
@@ -289,10 +362,23 @@ export default function TripPlanner() {
     return spots.length * 85; // Simple estimation
   };
 
+  // baseDistance = full round-trip (start→hotspot→start) — used for fuel calculations
   const baseDistance =
     useRealCalculation && fuelCalculation
       ? fuelCalculation.totals.distance_km
       : calculateDistance(selectedHotspots);
+
+  // oneWayDistance = straight-line from GPS start to primary hotspot — shown in UI
+  const oneWayDistance: number | null = (() => {
+    const hotspot = scanPredictions[0];
+    if (!hotspot || !startLocation) return null;
+    return calculateGeoDistance(
+      startLocation.lat,
+      startLocation.lng,
+      hotspot.lat,
+      hotspot.lng,
+    );
+  })();
 
   // Weather Impact Multiplier - use real weather data when available
   const weatherMultiplier =
@@ -330,7 +416,7 @@ export default function TripPlanner() {
   const fuelOnboard = parseFloat(currentFuelLevel || "0"); // Input is now in Liters
   const reserveFuel = tankCap * 0.2; // 20% reserve
   const fuelRemainingAfterTrip = fuelOnboard - fuelUsed;
-  const maxRange = (fuelOnboard / adjustedFuelRate) * 20; // km
+  const maxRange = (fuelOnboard / adjustedFuelRate) * baseSpeed; // km — weather-adjusted speed
 
   // Status Logic
   const hasEnoughFuel = fuelRemainingAfterTrip > 0;
@@ -493,29 +579,9 @@ export default function TripPlanner() {
               <CardContent className="space-y-5">
                 <div className="space-y-3">
                   <Label className="text-xs font-semibold uppercase tracking-wider text-slate-500">
-                    Vessel & Harbor
+                    Vessel
                   </Label>
                   <div className="grid gap-3">
-                    <Select
-                      value={selectedHarbor}
-                      onValueChange={(v: any) => setSelectedHarbor(v)}
-                    >
-                      <SelectTrigger className="bg-slate-50 dark:bg-slate-950/50">
-                        <div className="flex items-center gap-2">
-                          <Anchor className="h-4 w-4 text-sky-500" />
-                          <SelectValue />
-                        </div>
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="colombo">Colombo Harbor</SelectItem>
-                        <SelectItem value="galle">Galle Harbor</SelectItem>
-                        <SelectItem value="trinco">
-                          Trincomalee Harbor
-                        </SelectItem>
-                        <SelectItem value="negombo">Negombo Harbor</SelectItem>
-                      </SelectContent>
-                    </Select>
-
                     <div className="flex gap-2">
                       <Select
                         value={selectedVessel}
@@ -601,12 +667,30 @@ export default function TripPlanner() {
                     <Label className="text-xs font-semibold uppercase tracking-wider text-slate-500">
                       Target Destination
                     </Label>
-                    <Badge
-                      variant="outline"
-                      className="bg-sky-100 text-sky-700 border-sky-200 dark:bg-sky-900/30 dark:text-sky-400 dark:border-sky-800 text-[10px]"
-                    >
-                      IMPORTED FROM MAP
-                    </Badge>
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={loadFromStorage}
+                        title="Refresh destination from map"
+                        className="p-1 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 hover:text-sky-500 transition-colors"
+                      >
+                        <RefreshCw className="w-3 h-3" />
+                      </button>
+                      {scanPredictions.length > 0 && (
+                        <button
+                          onClick={clearDestination}
+                          title="Clear destination"
+                          className="p-1 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 hover:text-red-500 transition-colors"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      )}
+                      <Badge
+                        variant="outline"
+                        className="bg-sky-100 text-sky-700 border-sky-200 dark:bg-sky-900/30 dark:text-sky-400 dark:border-sky-800 text-[10px]"
+                      >
+                        FROM MAP
+                      </Badge>
+                    </div>
                   </div>
                   <div className="bg-white dark:bg-slate-950 rounded-lg border border-slate-200 dark:border-slate-800 p-3 shadow-sm relative overflow-hidden group">
                     <div className="absolute top-0 left-0 w-1 h-full bg-sky-500"></div>
@@ -614,13 +698,6 @@ export default function TripPlanner() {
                     {scanPredictions.length > 0 ? (
                       (() => {
                         const hotspot = scanPredictions[0];
-                        const harbor = HARBORS[selectedHarbor];
-                        const dist = calculateGeoDistance(
-                          harbor.lat,
-                          harbor.lng,
-                          hotspot.lat,
-                          hotspot.lng,
-                        );
                         return (
                           <div className="flex justify-between items-center pl-2">
                             <div>
@@ -639,11 +716,6 @@ export default function TripPlanner() {
                                   {hotspot.lng.toFixed(4)}
                                 </span>
                               </div>
-                              <div className="mt-2 text-sky-600 dark:text-sky-400 text-xs font-bold flex items-center gap-1">
-                                <Navigation className="w-3 h-3" />
-                                {dist.toFixed(1)} km from{" "}
-                                {HARBORS[selectedHarbor].name}
-                              </div>
                             </div>
                           </div>
                         );
@@ -651,10 +723,7 @@ export default function TripPlanner() {
                     ) : (
                       <div className="flex items-center gap-2 pl-2 text-slate-400 text-sm">
                         <MapPin className="w-4 h-4 opacity-40" />
-                        <span>
-                          Run a hotspot scan on the Map page to set a
-                          destination
-                        </span>
+                        <span>Go to Map, select a hotspot or run a scan</span>
                       </div>
                     )}
                   </div>
@@ -755,19 +824,30 @@ export default function TripPlanner() {
                     </div>
 
                     <div className="grid grid-cols-2 gap-4">
-                      {/* NEW: Total Trip Distance Prominent Display */}
+                      {/* Total Trip Distance — shows one-way to match HotspotMap */}
                       <div className="col-span-2 p-4 bg-sky-50/50 dark:bg-sky-900/20 rounded-xl border border-sky-100 dark:border-sky-800 flex items-center justify-between group-hover:border-sky-200 dark:group-hover:border-sky-700/50 transition-colors">
                         <div>
                           <div className="flex items-center gap-2 text-xs font-bold text-sky-600 dark:text-sky-400 uppercase tracking-widest mb-1">
                             <MapPin className="w-3 h-3" />
-                            Total Trip Distance
+                            Distance to Destination
                           </div>
-                          <div className="text-4xl font-black text-slate-900 dark:text-white tracking-tight">
-                            {baseDistance.toFixed(1)}
-                            <span className="text-lg text-slate-400 font-bold ml-1">
-                              km
-                            </span>
-                          </div>
+                          {oneWayDistance !== null ? (
+                            <>
+                              <div className="text-4xl font-black text-slate-900 dark:text-white tracking-tight">
+                                {oneWayDistance.toFixed(1)}
+                                <span className="text-lg text-slate-400 font-bold ml-1">
+                                  km
+                                </span>
+                              </div>
+                              <div className="text-[10px] text-slate-400 mt-1">
+                                Round trip: {(oneWayDistance * 2).toFixed(1)} km
+                              </div>
+                            </>
+                          ) : (
+                            <div className="text-sm text-slate-400 mt-1">
+                              Go to Map page, enable GPS or select a hotspot
+                            </div>
+                          )}
                         </div>
                         <div className="h-10 w-10 rounded-full bg-sky-100 dark:bg-sky-900 flex items-center justify-center">
                           <Navigation className="h-5 w-5 text-sky-600 dark:text-sky-400" />
