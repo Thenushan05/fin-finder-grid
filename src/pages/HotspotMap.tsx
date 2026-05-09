@@ -28,11 +28,6 @@ import {
   Flag,
 } from "lucide-react";
 import { WiDaySunny, WiCloud, WiStrongWind, WiRaindrops } from "react-icons/wi";
-import {
-  mockHotspots,
-  mockWeatherHazards,
-  type WeatherHazard,
-} from "@/services/mockData";
 import { fetchOpenMeteo, type OpenMeteoResult } from "@/services/openMeteo";
 import {
   fetchMarineData,
@@ -42,6 +37,7 @@ import {
 import {
   calculateHazardLevel,
   type HazardResult,
+  type WeatherHazard,
 } from "@/lib/hazardClassification";
 import { useState, useEffect, useMemo, useCallback } from "react";
 import type { MouseEvent as ReactMouseEvent } from "react";
@@ -67,7 +63,7 @@ function calculateDistance(
   lat1: number,
   lon1: number,
   lat2: number,
-  lon2: number
+  lon2: number,
 ) {
   const toRad = (deg: number) => (deg * Math.PI) / 180;
   const R = 3440.065; // Radius of earth in Nautical Miles
@@ -85,8 +81,8 @@ function calculateDistance(
 
 // Hazard level to color mapping for route segments
 const hazardColors: Record<string, string> = {
-  LOW: "#22c55e", // green-500
-  MEDIUM: "#eab308", // yellow-500
+  LOW: "#10b981", // emerald-500
+  MEDIUM: "#facc15", // yellow-400
   HIGH: "#f97316", // orange-500
   DANGER: "#ef4444", // red-500
 };
@@ -94,7 +90,7 @@ const hazardColors: Record<string, string> = {
 // Create route layer with hazard-based coloring
 const createRouteLayer = (
   hazardLevel: string,
-  isAlternative: boolean = false
+  isAlternative: boolean = false,
 ): LineLayer => ({
   id: `route-${hazardLevel}${isAlternative ? "-alt" : ""}`,
   type: "line",
@@ -104,8 +100,8 @@ const createRouteLayer = (
   },
   paint: {
     "line-color": hazardColors[hazardLevel] ?? "#ef4444",
-    "line-width": isAlternative ? 6 : 5, // Thicker for alternative route
-    "line-opacity": isAlternative ? 0.95 : 0.85,
+    "line-width": isAlternative ? 6 : 7, // Thicker solid route line (like image)
+    "line-opacity": 1,
   },
   filter: ["==", ["get", "hazard"], hazardLevel],
 });
@@ -180,7 +176,7 @@ export default function HotspotMap() {
     lng: number;
   } | null>(null);
   const [selectedHazard, setSelectedHazard] = useState<WeatherHazard | null>(
-    null
+    null,
   );
   const [geolocationError, setGeolocationError] = useState<string | null>(null);
 
@@ -188,10 +184,15 @@ export default function HotspotMap() {
   // Note: Hotspots from backend already include SST/SSH/Chlorophyll in prediction response
   // This data is only fetched when user manually selects a point on the map
   const [destinationSST, setDestinationSST] = useState<number | null>(null);
-  const [destinationSSTError, setDestinationSSTError] = useState<string | null>(null);
+  const [destinationSSTError, setDestinationSSTError] = useState<string | null>(
+    null,
+  );
   const [destinationSSTLoading, setDestinationSSTLoading] = useState(false);
-  const [destinationMarine, setDestinationMarine] = useState<MarineResult | null>(null);
-  const [destinationMarineError, setDestinationMarineError] = useState<string | null>(null);
+  const [destinationMarine, setDestinationMarine] =
+    useState<MarineResult | null>(null);
+  const [destinationMarineError, setDestinationMarineError] = useState<
+    string | null
+  >(null);
 
   const [isMapLoaded, setIsMapLoaded] = useState(false);
 
@@ -217,6 +218,18 @@ export default function HotspotMap() {
           lat: position.coords.latitude,
           lng: position.coords.longitude,
         });
+        // Persist start location so TripPlanner can use it
+        try {
+          localStorage.setItem(
+            "fishspot_start_location",
+            JSON.stringify({
+              lat: position.coords.latitude,
+              lng: position.coords.longitude,
+            }),
+          );
+        } catch {
+          /* ignore */
+        }
         // Debug: log raw geolocation to console for troubleshooting
         console.debug("Geolocation success:", {
           latitude: position.coords.latitude,
@@ -244,7 +257,7 @@ export default function HotspotMap() {
         console.warn("Error getting location:", msg);
         setGeolocationError(msg);
       },
-      { enableHighAccuracy: true, timeout: 10000 }
+      { enableHighAccuracy: true, timeout: 10000 },
     );
     return () => {
       mounted = false;
@@ -271,6 +284,18 @@ export default function HotspotMap() {
           lat: position.coords.latitude,
           lng: position.coords.longitude,
         });
+        // Persist start location so TripPlanner can use it
+        try {
+          localStorage.setItem(
+            "fishspot_start_location",
+            JSON.stringify({
+              lat: position.coords.latitude,
+              lng: position.coords.longitude,
+            }),
+          );
+        } catch {
+          /* ignore */
+        }
         // Debug: log raw geolocation on retry
         console.debug("Geolocation retry success:", {
           latitude: position.coords.latitude,
@@ -296,19 +321,22 @@ export default function HotspotMap() {
         console.warn("Geolocation retry error:", msg);
         setGeolocationError(msg);
       },
-      { enableHighAccuracy: true, timeout: 10000 }
+      { enableHighAccuracy: true, timeout: 10000 },
     );
   }, []);
 
-  const distance = userLocation
-    ? calculateDistance(
-        userLocation.lat,
-        userLocation.lng,
-        destination.lat,
-        destination.lng
-      )
-    : null;
-  const distanceKm = distance ? distance * 1.852 : null;
+  const effectiveStartLocation = userLocation ?? {
+    lat: viewState.latitude,
+    lng: viewState.longitude,
+  };
+
+  const distance = calculateDistance(
+    effectiveStartLocation.lat,
+    effectiveStartLocation.lng,
+    destination.lat,
+    destination.lng,
+  );
+  const distanceKm = distance * 1.852;
 
   // Route weather: stored points and a manual fetch function (run only when user requests)
   const [selectedRoutePoint, setSelectedRoutePoint] = useState<{
@@ -441,19 +469,19 @@ export default function HotspotMap() {
 
   // Fallback: simple route line when no weather data
   const routeGeoJSON = useMemo(() => {
-    if (!userLocation || routeWeatherPoints.length > 0) return null;
+    if (routeWeatherPoints.length > 0) return null;
     return {
       type: "Feature",
       properties: {},
       geometry: {
         type: "LineString",
         coordinates: [
-          [userLocation.lng, userLocation.lat],
+          [effectiveStartLocation.lng, effectiveStartLocation.lat],
           [destination.lng, destination.lat],
         ],
       },
     };
-  }, [userLocation, destination, routeWeatherPoints.length]);
+  }, [effectiveStartLocation, destination, routeWeatherPoints.length]);
 
   // Analyze route for summary
   const routeSummary = useMemo(() => {
@@ -497,7 +525,7 @@ export default function HotspotMap() {
           message: `${
             level === "DANGER" ? "⛔" : "⚠️"
           } ${level} risk at ${distStr} around ${timeStr} - ${reasonList.join(
-            ", "
+            ", ",
           )}`,
         });
       }
@@ -529,8 +557,8 @@ export default function HotspotMap() {
             r.routeType === "main"
               ? "Direct"
               : r.routeType === "north"
-              ? "Northern"
-              : "Southern",
+                ? "Northern"
+                : "Southern",
           counts: r.counts,
           hazardScore: r.hazardScore,
           safePercent,
@@ -558,7 +586,7 @@ export default function HotspotMap() {
   function computeIntermediatePoints(
     start: { lat: number; lng: number },
     end: { lat: number; lng: number },
-    intervalKm = 15
+    intervalKm = 15,
   ) {
     // distance in km
     const distNM = calculateDistance(start.lat, start.lng, end.lat, end.lng);
@@ -630,7 +658,7 @@ export default function HotspotMap() {
   // Midpoint between two lat/lngs (simple average, ok for short distances)
   function midpoint(
     a: { lat: number; lng: number },
-    b: { lat: number; lng: number }
+    b: { lat: number; lng: number },
   ) {
     return { lat: (a.lat + b.lat) / 2, lng: (a.lng + b.lng) / 2 };
   }
@@ -642,7 +670,12 @@ export default function HotspotMap() {
     setPendingManualDestination(dest);
   };
 
-  const handleHotspotSelect = (hotspot: (typeof mockHotspots)[0]) => {
+  const handleHotspotSelect = (hotspot: {
+    lat: number;
+    lng: number;
+    species?: string;
+    probability?: number;
+  }) => {
     setSelectedHotspot(hotspot);
     setManualDestination(null);
     setViewState({
@@ -650,13 +683,41 @@ export default function HotspotMap() {
       longitude: hotspot.lng,
       latitude: hotspot.lat,
       zoom: 10,
-      // transitionDuration: 1000, // Context state might not support transitionDuration if not typed, removing for safety or adding to type if needed.
     });
+
+    // Persist to localStorage so TripPlanner auto-imports this as the target destination
+    try {
+      localStorage.setItem(
+        "fishspot_confirmed_destination",
+        JSON.stringify({
+          lat: hotspot.lat,
+          lng: hotspot.lng,
+          label: hotspot.species ?? "Hotspot",
+        }),
+      );
+      // Always persist the current start so TripPlanner can compute real distance
+      localStorage.setItem(
+        "fishspot_start_location",
+        JSON.stringify({
+          lat: effectiveStartLocation.lat,
+          lng: effectiveStartLocation.lng,
+        }),
+      );
+    } catch {
+      /* ignore */
+    }
+
+    // Auto-scan route for the selected hotspot
+    setAlternativeRoutes([]);
+    setSelectedRouteType("main");
+    setOriginalMainRoute([]);
+    const start = effectiveStartLocation;
+    void fetchRouteWeather(start, hotspot, 15);
   };
 
   // Weather state for the currently targeted location (selected hotspot OR manual map click)
   const [localWeather, setLocalWeather] = useState<OpenMeteoResult | null>(
-    null
+    null,
   );
   const [weatherError, setWeatherError] = useState<string | null>(null);
 
@@ -790,7 +851,7 @@ export default function HotspotMap() {
             // eslint-disable-next-line no-console
             console.debug(
               "SST helper returned no usable value:",
-              sstRes?.rawHourly
+              sstRes?.rawHourly,
             );
 
             // Fallback: try to read directly from the raw marine response `m.hourly` (ISO time strings)
@@ -798,7 +859,7 @@ export default function HotspotMap() {
               if (m?.hourly && Array.isArray(m.hourly.time)) {
                 const fallbackIdx = findNearestHourlyIndex(
                   m.hourly.time,
-                  new Date()
+                  new Date(),
                 );
                 const fallbackVal =
                   m.hourly.sea_surface_temperature?.[fallbackIdx];
@@ -808,7 +869,7 @@ export default function HotspotMap() {
                   console.debug(
                     "SST fallback used m.hourly value at index",
                     fallbackIdx,
-                    sstVal
+                    sstVal,
                   );
                 }
               }
@@ -840,6 +901,52 @@ export default function HotspotMap() {
   // Route summary for overall assessment
   const [showRouteSummary, setShowRouteSummary] = useState(false);
 
+  // Maritime boundary visibility toggles
+  const [showEEZ, setShowEEZ] = useState(true);
+  const [show24nm, setShow24nm] = useState(true);
+  const [show12nm, setShow12nm] = useState(true);
+
+  // EEZ outer boundary only (no inner land/island rings) — used for the line layer
+  const [eezOuterLine, setEezOuterLine] = useState<any>(null);
+  const [nm24OuterLine, setNm24OuterLine] = useState<any>(null);
+  const [nm12OuterLine, setNm12OuterLine] = useState<any>(null);
+  useEffect(() => {
+    const extractOuter = (url: string, setter: (g: any) => void) => {
+      fetch(url)
+        .then((r) => r.json())
+        .then((data) => {
+          const features = (data.features ?? []).flatMap((feat: any) => {
+            const gt = feat.geometry?.type;
+            if (gt === "Polygon") {
+              return [
+                {
+                  type: "Feature",
+                  geometry: {
+                    type: "LineString",
+                    coordinates: feat.geometry.coordinates[0],
+                  },
+                  properties: feat.properties,
+                },
+              ];
+            }
+            if (gt === "MultiPolygon") {
+              return feat.geometry.coordinates.map((poly: any) => ({
+                type: "Feature",
+                geometry: { type: "LineString", coordinates: poly[0] },
+                properties: feat.properties,
+              }));
+            }
+            return [];
+          });
+          setter({ type: "FeatureCollection", features });
+        })
+        .catch(() => {});
+    };
+    extractOuter("/geojson/sri_lanka_eez.geojson", setEezOuterLine);
+    extractOuter("/geojson/sri_lanka_24nm.geojson", setNm24OuterLine);
+    extractOuter("/geojson/sri_lanka_12nm.geojson", setNm12OuterLine);
+  }, []);
+
   // Time optimization: analyze route at different departure times
   const [timeAnalysis, setTimeAnalysis] = useState<Array<{
     departureTime: Date;
@@ -864,7 +971,7 @@ export default function HotspotMap() {
         counts.DANGER * 10
       );
     },
-    []
+    [],
   );
 
   // Helper: check if route is too risky (more than 20% HIGH/DANGER segments)
@@ -872,11 +979,11 @@ export default function HotspotMap() {
     (routePoints: typeof routeWeatherPoints) => {
       if (routePoints.length === 0) return false;
       const dangerSegments = routePoints.filter(
-        (p) => p.hazard?.level === "HIGH" || p.hazard?.level === "DANGER"
+        (p) => p.hazard?.level === "HIGH" || p.hazard?.level === "DANGER",
       ).length;
       return dangerSegments / routePoints.length > 0.2;
     },
-    []
+    [],
   );
 
   // Helper: generate parallel route with simple latitude offset
@@ -886,7 +993,7 @@ export default function HotspotMap() {
   const buildParallelRoute = useCallback(
     (
       mainRoutePoints: Array<{ lat: number; lng: number }>,
-      deltaLat: number
+      deltaLat: number,
     ) => {
       return mainRoutePoints.map((p, idx) => {
         // Keep first and last points at original coordinates
@@ -900,7 +1007,7 @@ export default function HotspotMap() {
         };
       });
     },
-    []
+    [],
   );
 
   // Helper: find the nearest hourly index for a given target timestamp
@@ -922,7 +1029,7 @@ export default function HotspotMap() {
       }
       return nearestIdx;
     },
-    []
+    [],
   );
 
   // Analyze route at multiple departure times to find the safest window
@@ -930,7 +1037,7 @@ export default function HotspotMap() {
     async (
       start: { lat: number; lng: number },
       end: { lat: number; lng: number },
-      intervalKm = 15
+      intervalKm = 15,
     ) => {
       if (!start || !end) return;
       setAnalyzingTimes(true);
@@ -945,7 +1052,7 @@ export default function HotspotMap() {
 
         for (const offsetHours of timeOffsets) {
           const testDepartureTime = new Date(
-            departureTime.getTime() + offsetHours * 3600 * 1000
+            departureTime.getTime() + offsetHours * 3600 * 1000,
           );
 
           // Calculate cumulative distances and ETAs for each point
@@ -957,13 +1064,13 @@ export default function HotspotMap() {
                 prevPoint.lat,
                 prevPoint.lng,
                 p.lat,
-                p.lng
+                p.lng,
               );
               cumulativeDistance += segmentDistNM * 1.852;
             }
             const etaHours = cumulativeDistance / boatSpeedKmh;
             const forecastTime = new Date(
-              testDepartureTime.getTime() + etaHours * 3600 * 1000
+              testDepartureTime.getTime() + etaHours * 3600 * 1000,
             );
             return {
               p,
@@ -987,7 +1094,7 @@ export default function HotspotMap() {
                 daily: "wave_height_max",
                 timezone: "UTC",
               }),
-            ]).then(([d, m]) => ({ forecastTime, d, m }))
+            ]).then(([d, m]) => ({ forecastTime, d, m })),
           );
 
           const results = await Promise.all(fetches);
@@ -1017,7 +1124,7 @@ export default function HotspotMap() {
               ws,
               wave_height,
               weathercode,
-              ocean_current_velocity
+              ocean_current_velocity,
             );
             counts[hazard.level]++;
           });
@@ -1051,14 +1158,14 @@ export default function HotspotMap() {
         setAnalyzingTimes(false);
       }
     },
-    [boatSpeedKmh, departureTime, findNearestHourlyIndex, computeHazardScore]
+    [boatSpeedKmh, departureTime, findNearestHourlyIndex, computeHazardScore],
   );
 
   const fetchRouteWeather = useCallback(
     async (
       start: { lat: number; lng: number },
       end: { lat: number; lng: number },
-      intervalKm = 15
+      intervalKm = 15,
     ) => {
       if (!start || !end) return;
       setRouteWeatherLoading(true);
@@ -1077,13 +1184,13 @@ export default function HotspotMap() {
               prevPoint.lat,
               prevPoint.lng,
               p.lat,
-              p.lng
+              p.lng,
             );
             cumulativeDistance += segmentDistNM * 1.852; // Convert NM to km
           }
           const etaHours = cumulativeDistance / boatSpeedKmh;
           const forecastTime = new Date(
-            departureTime.getTime() + etaHours * 3600 * 1000
+            departureTime.getTime() + etaHours * 3600 * 1000,
           );
           return {
             p,
@@ -1115,7 +1222,7 @@ export default function HotspotMap() {
               forecastTime,
               d,
               m,
-            }))
+            })),
         );
         const results = await Promise.all(fetches);
 
@@ -1152,7 +1259,7 @@ export default function HotspotMap() {
               ws,
               wave_height,
               weathercode,
-              ocean_current_velocity
+              ocean_current_velocity,
             );
 
             return {
@@ -1169,14 +1276,14 @@ export default function HotspotMap() {
               primaryReason: determinePrimaryReason(
                 Array.isArray((hazard as HazardResult).reasons)
                   ? (hazard as HazardResult).reasons
-                  : undefined
+                  : undefined,
               ),
               wave_height,
               wave_direction,
               ocean_current_velocity,
               ocean_current_direction,
             };
-          }
+          },
         );
         setRouteWeatherPoints(mapped);
       } catch (e) {
@@ -1185,7 +1292,7 @@ export default function HotspotMap() {
         setRouteWeatherLoading(false);
       }
     },
-    [boatSpeedKmh, departureTime, findNearestHourlyIndex]
+    [boatSpeedKmh, departureTime, findNearestHourlyIndex],
   );
 
   // Analyze alternative routes when main route is too risky
@@ -1193,7 +1300,7 @@ export default function HotspotMap() {
     async (
       start: { lat: number; lng: number },
       end: { lat: number; lng: number },
-      intervalKm = 15
+      intervalKm = 15,
     ) => {
       if (!start || !end) return;
       setAnalyzingRoutes(true);
@@ -1208,7 +1315,7 @@ export default function HotspotMap() {
           start,
           end,
           "main",
-          0
+          0,
         );
         routes.push(mainWeather);
 
@@ -1236,7 +1343,7 @@ export default function HotspotMap() {
           start,
           end,
           "north",
-          9
+          9,
         );
         routes.push(northWeather);
 
@@ -1248,7 +1355,7 @@ export default function HotspotMap() {
           start,
           end,
           "south",
-          9
+          9,
         );
         routes.push(southWeather);
 
@@ -1277,7 +1384,7 @@ export default function HotspotMap() {
       computeHazardScore,
       isRouteHighRisk,
       buildParallelRoute,
-    ]
+    ],
   );
 
   // Helper: analyze weather for a set of route points
@@ -1287,7 +1394,7 @@ export default function HotspotMap() {
       start: { lat: number; lng: number },
       end: { lat: number; lng: number },
       routeType: "main" | "north" | "south",
-      offset: number
+      offset: number,
     ) => {
       const limited = points.slice(0, 100); // Support routes up to 1500km
 
@@ -1300,13 +1407,13 @@ export default function HotspotMap() {
             prevPoint.lat,
             prevPoint.lng,
             p.lat,
-            p.lng
+            p.lng,
           );
           cumulativeDistance += segmentDistNM * 1.852;
         }
         const etaHours = cumulativeDistance / boatSpeedKmh;
         const forecastTime = new Date(
-          departureTime.getTime() + etaHours * 3600 * 1000
+          departureTime.getTime() + etaHours * 3600 * 1000,
         );
         return {
           p,
@@ -1338,7 +1445,7 @@ export default function HotspotMap() {
             forecastTime,
             d,
             m,
-          }))
+          })),
       );
 
       const results = await Promise.all(fetches);
@@ -1349,7 +1456,7 @@ export default function HotspotMap() {
         ({ p, distanceFromStart, etaHours, forecastTime, d, m }, idx) => {
           const idx_forecast = findNearestHourlyIndex(
             d?.hourly?.time ?? [],
-            forecastTime
+            forecastTime,
           );
           const ws = d?.hourly?.wind_speed_10m?.[idx_forecast] ?? null;
           const wd = d?.hourly?.wind_direction_10m?.[idx_forecast] ?? null;
@@ -1369,7 +1476,7 @@ export default function HotspotMap() {
             ws,
             wave_height,
             weathercode,
-            ocean_current_velocity
+            ocean_current_velocity,
           );
           counts[hazard.level]++;
 
@@ -1390,7 +1497,7 @@ export default function HotspotMap() {
             hazard,
             primaryReason: determinePrimaryReason(getHazardReasons(hazard)),
           };
-        }
+        },
       );
 
       const hazardScore = computeHazardScore(counts);
@@ -1404,7 +1511,7 @@ export default function HotspotMap() {
         offset,
       };
     },
-    [boatSpeedKmh, departureTime, findNearestHourlyIndex, computeHazardScore]
+    [boatSpeedKmh, departureTime, findNearestHourlyIndex, computeHazardScore],
   );
 
   // No automatic scanning: route markers remain empty until the user clicks 'Scan'
@@ -1432,13 +1539,15 @@ export default function HotspotMap() {
             // Find the currently selected route's stats
             const currentRoute =
               alternativeRoutes.length > 0
-                ? alternativeRoutes.find((r) => r.routeType === selectedRouteType)
+                ? alternativeRoutes.find(
+                    (r) => r.routeType === selectedRouteType,
+                  )
                 : routeSummary
-                ? {
-                    counts: routeSummary.counts,
-                    hazardScore: 0, // Not needed for this check
-                  }
-                : null;
+                  ? {
+                      counts: routeSummary.counts,
+                      hazardScore: 0, // Not needed for this check
+                    }
+                  : null;
 
             if (!currentRoute) return null;
 
@@ -1503,7 +1612,7 @@ export default function HotspotMap() {
               ) : (
                 (() => {
                   const mainRoute = alternativeRoutes.find(
-                    (r) => r.routeType === "main"
+                    (r) => r.routeType === "main",
                   );
                   if (!mainRoute) return null;
 
@@ -1549,8 +1658,8 @@ export default function HotspotMap() {
                             riskColor === "text-red-700"
                               ? "text-red-700 dark:text-red-400"
                               : riskColor === "text-orange-700"
-                              ? "text-orange-700 dark:text-orange-400"
-                              : "text-yellow-700 dark:text-yellow-400"
+                                ? "text-orange-700 dark:text-orange-400"
+                                : "text-yellow-700 dark:text-yellow-400"
                           }`}
                         >
                           Original Route ({riskLabel})
@@ -1737,8 +1846,6 @@ export default function HotspotMap() {
             </div>
           </div>
 
-
-
           <Map
             key={isDarkMode ? "dark-map" : "light-map"}
             {...viewState}
@@ -1775,74 +1882,6 @@ export default function HotspotMap() {
               </Marker>
             )}
 
-            {/* Hotspot Markers */}
-            {mockHotspots.map((hotspot, idx) => (
-              <Marker
-                key={idx}
-                longitude={hotspot.lng}
-                latitude={hotspot.lat}
-                anchor="bottom"
-                onClick={(e) => {
-                  e.originalEvent.stopPropagation();
-                  handleHotspotSelect(hotspot);
-                }}
-              >
-                <div
-                  title={`${hotspot.species} Hotspot - ${(
-                    hotspot.probability * 100
-                  ).toFixed(0)}% probability`}
-                >
-                  <MapPin
-                    className={`h-8 w-8 transition-all cursor-pointer ${
-                      selectedHotspot === hotspot && !manualDestination
-                        ? "text-primary scale-125 drop-shadow-lg"
-                        : "text-primary/70 hover:scale-110"
-                    }`}
-                    fill="currentColor"
-                  />
-                </div>
-              </Marker>
-            ))}
-
-            {/* Selected Hotspot Popup (only when a hotspot is selected and not manual destination) */}
-            {!manualDestination && selectedHotspot && (
-              <Popup
-                className="mapbox-popup"
-                longitude={selectedHotspot.lng}
-                latitude={selectedHotspot.lat}
-                anchor="top"
-                closeButton={false}
-                closeOnClick={false}
-                offset={10}
-              >
-                <div className="glass-card relative p-3 min-w-[160px] text-foreground rounded-lg">
-                  <button
-                    aria-label="Close"
-                    className="absolute -top-3 -right-3 glass-close z-20"
-                    onClick={() => setSelectedHotspot(null)}
-                  >
-                    <X className="h-4 w-4 text-muted-foreground" />
-                  </button>
-                  <div className="text-center">
-                    <p className="font-bold text-sm">
-                      {selectedHotspot.species}
-                    </p>
-                    <Badge
-                      variant={
-                        selectedHotspot.probability > 0.8
-                          ? "default"
-                          : "secondary"
-                      }
-                      className="mt-1"
-                    >
-                      {(selectedHotspot.probability * 100).toFixed(0)}%
-                      Probability
-                    </Badge>
-                  </div>
-                </div>
-              </Popup>
-            )}
-
             {/* Manual Destination Marker */}
             {/* Pending manual destination requires confirmation before scanning */}
             {pendingManualDestination && (
@@ -1876,11 +1915,25 @@ export default function HotspotMap() {
                         setAlternativeRoutes([]);
                         setSelectedRouteType("main");
                         setOriginalMainRoute([]);
-                        // Start from userLocation if available, otherwise use current view center
-                        const start = userLocation ?? {
-                          lat: viewState.latitude,
-                          lng: viewState.longitude,
-                        };
+                        // Start from userLocation if available, otherwise use fallback
+                        const start = effectiveStartLocation;
+                        // Persist destination + start so TripPlanner gets correct distance
+                        try {
+                          localStorage.setItem(
+                            "fishspot_confirmed_destination",
+                            JSON.stringify({
+                              lat: dest.lat,
+                              lng: dest.lng,
+                              label: "Map Destination",
+                            }),
+                          );
+                          localStorage.setItem(
+                            "fishspot_start_location",
+                            JSON.stringify({ lat: start.lat, lng: start.lng }),
+                          );
+                        } catch {
+                          /* ignore */
+                        }
                         void fetchRouteWeather(start, dest, 15);
                       }}
                     >
@@ -1896,8 +1949,6 @@ export default function HotspotMap() {
                 </div>
               </Popup>
             )}
-
-
 
             {/* Original route outline (dashed red when alternative is selected) */}
             {isMapLoaded && originalRouteOutline && (
@@ -2000,45 +2051,30 @@ export default function HotspotMap() {
                     setSelectedRoutePoint(pt);
                   }}
                 >
-                  <div className="relative flex items-center justify-center cursor-pointer group transition-transform hover:scale-110">
-                    {/* Modern Glassmorphism Marker with Icon */}
+                  <div className="relative flex items-center justify-center cursor-pointer group transition-transform hover:scale-125">
+                    {/* Simple Map Point (Like Image) */}
                     <div
                       title={title}
                       className={`
-                        flex items-center justify-center backdrop-blur-md shadow-sm border border-white/40
+                        w-4 h-4 rounded-full border-[3px] border-white shadow-md
                         transition-all duration-300
                         ${
                           hazard.level === "DANGER"
-                            ? "bg-red-500/90 shadow-red-500/20"
+                            ? "bg-red-500 shadow-red-500/40"
                             : hazard.level === "HIGH"
-                            ? "bg-orange-500/90 shadow-orange-500/20"
-                            : hazard.level === "MEDIUM"
-                            ? "bg-yellow-500/90 shadow-yellow-500/20"
-                            : "bg-emerald-500/90 shadow-emerald-500/20"
+                              ? "bg-orange-500 shadow-orange-500/40"
+                              : hazard.level === "MEDIUM"
+                                ? "bg-yellow-400 shadow-yellow-500/40"
+                                : "bg-emerald-500 shadow-emerald-500/40"
                         }
-                        ${showWarning ? "w-6 h-6 ring-2 ring-red-500/30" : "w-5 h-5"}
-                        rounded-lg
                       `}
-                    >
-                      {/* Icon is always visible now, but small and neat */}
-                      {primaryReason === "wind" ? (
-                        <Wind className="h-3 w-3 text-white" />
-                      ) : primaryReason === "waves" ? (
-                        <Waves className="h-3 w-3 text-white" />
-                      ) : primaryReason === "current" ? (
-                        <Droplets className="h-3 w-3 text-white" />
-                      ) : primaryReason === "weather" ? (
-                        <CloudLightning className="h-3 w-3 text-white" />
-                      ) : isDanger ? (
-                        <AlertTriangle className="h-3 w-3 text-white" />
-                      ) : (
-                        <div className="w-1.5 h-1.5 bg-white rounded-full opacity-90" />
-                      )}
-                    </div>
+                    />
 
-                    {/* Subtle indicator for high risk */}
-                    {isDanger && !primaryReason && (
-                      <div className="absolute -top-1 -right-1 w-2 h-2 bg-red-500 rounded-full border border-white" />
+                    {/* Subtle indicator for very high risk so it's not totally blank */}
+                    {isDanger && (
+                      <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2">
+                        <div className="w-1.5 h-1.5 bg-white rounded-full opacity-90" />
+                      </div>
                     )}
                   </div>
                 </Marker>
@@ -2075,7 +2111,10 @@ export default function HotspotMap() {
                 offset={[0, -10]} // Lift it up slightly to sit "on top" of any hazard icon
                 style={{ zIndex: 9999 }}
               >
-                <div className="relative group cursor-pointer" title="Destination">
+                <div
+                  className="relative group cursor-pointer"
+                  title="Destination"
+                >
                   {/* Sleek Professional Pin - Purple & Larger */}
                   <div className="relative z-10 flex flex-col items-center">
                     <div className="w-6 h-6 bg-purple-600 rounded-full shadow-2xl border-[3px] border-white transform transition-transform group-hover:scale-110 flex items-center justify-center">
@@ -2085,7 +2124,7 @@ export default function HotspotMap() {
                   </div>
                   {/* Shadow base */}
                   <div className="absolute top-[95%] left-1/2 -translate-x-1/2 w-5 h-2 bg-black/40 rounded-full blur-[2px]" />
-                  
+
                   {/* Label */}
                   <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 opacity-0 group-hover:opacity-100 transition-opacity whitespace-nowrap z-50">
                     <span className="bg-purple-900/95 text-white text-xs font-bold px-2.5 py-1.5 rounded-lg shadow-xl backdrop-blur-md border border-purple-500/30">
@@ -2116,10 +2155,10 @@ export default function HotspotMap() {
                       selectedRoutePoint.hazard?.level === "DANGER"
                         ? "bg-red-100 text-red-700 border-red-200 animate-pulse"
                         : selectedRoutePoint.hazard?.level === "HIGH"
-                        ? "bg-orange-100 text-orange-700 border-orange-200"
-                        : selectedRoutePoint.hazard?.level === "MEDIUM"
-                        ? "bg-yellow-100 text-yellow-700 border-yellow-200"
-                        : "bg-green-100 text-green-700 border-green-200"
+                          ? "bg-orange-100 text-orange-700 border-orange-200"
+                          : selectedRoutePoint.hazard?.level === "MEDIUM"
+                            ? "bg-yellow-100 text-yellow-700 border-yellow-200"
+                            : "bg-green-100 text-green-700 border-green-200"
                     }`}
                   >
                     <div className="flex items-center gap-2">
@@ -2221,7 +2260,7 @@ export default function HotspotMap() {
                         </div>
                         <span className="font-bold text-black dark:text-white">
                           {selectedRoutePoint.ocean_current_velocity?.toFixed(
-                            2
+                            2,
                           ) ?? "--"}{" "}
                           m/s
                         </span>
@@ -2239,7 +2278,7 @@ export default function HotspotMap() {
                         <div>
                           {selectedRoutePoint.forecastTime.toLocaleTimeString(
                             [],
-                            { hour: "2-digit", minute: "2-digit" }
+                            { hour: "2-digit", minute: "2-digit" },
                           )}
                         </div>
                       )}
@@ -2281,16 +2320,17 @@ export default function HotspotMap() {
                       {selectedHazard.type === "storm"
                         ? "Storm Warning"
                         : selectedHazard.type === "tornado"
-                        ? "Tornado Warning"
-                        : "High Waves"}
+                          ? "Tornado Warning"
+                          : "High Waves"}
                     </p>
                   </div>
                   <p className="text-xs text-muted-foreground mb-2">
-                    {selectedRoutePoint.hazard?.description ?? "No data"}
+                    {selectedRoutePoint?.hazard?.description ?? "No data"}
                   </p>
 
                   {/* Show explicit reasons when available */}
                   {(() => {
+                    if (!selectedRoutePoint?.hazard) return null;
                     const rs = getHazardReasons(selectedRoutePoint.hazard);
                     if (!rs || rs.length === 0) return null;
                     return (
@@ -2310,8 +2350,8 @@ export default function HotspotMap() {
                         selectedHazard.severity === "high"
                           ? "destructive"
                           : selectedHazard.severity === "medium"
-                          ? "default"
-                          : "secondary"
+                            ? "default"
+                            : "secondary"
                       }
                       className="w-fit"
                     >
@@ -2331,10 +2371,214 @@ export default function HotspotMap() {
                 </div>
               </Popup>
             )}
+
+            {/* MARITIME BOUNDARIES: Sri Lanka EEZ, Contiguous (24NM), Territorial (12NM) */}
+            {isMapLoaded && (
+              <>
+                {/* 200NM Exclusive Economic Zone */}
+                {showEEZ && (
+                  <>
+                    {/* Fill using original polygon (inner rings = land holes → ocean-only fill) */}
+                    <Source
+                      id="eez-source"
+                      type="geojson"
+                      data="/geojson/sri_lanka_eez.geojson"
+                    >
+                      <Layer
+                        id="eez-fill"
+                        type="fill"
+                        paint={{
+                          "fill-color": "#0ea5e9",
+                          "fill-opacity": 0.05,
+                        }}
+                      />
+                    </Source>
+                    {/* Outer maritime boundary line only — inner land/island rings excluded */}
+                    {eezOuterLine && (
+                      <Source
+                        id="eez-outer-source"
+                        type="geojson"
+                        data={eezOuterLine}
+                      >
+                        <Layer
+                          id="eez-line"
+                          type="line"
+                          paint={{
+                            "line-color": "#ef4444",
+                            "line-width": 3,
+                            "line-dasharray": [2, 2],
+                          }}
+                        />
+                      </Source>
+                    )}
+                  </>
+                )}
+
+                {/* 24NM Contiguous Zone */}
+                {show24nm && (
+                  <>
+                    <Source
+                      id="24nm-source"
+                      type="geojson"
+                      data="/geojson/sri_lanka_24nm.geojson"
+                    >
+                      <Layer
+                        id="24nm-fill"
+                        type="fill"
+                        paint={{
+                          "fill-color": "#3b82f6",
+                          "fill-opacity": 0.08,
+                        }}
+                      />
+                    </Source>
+                    {nm24OuterLine && (
+                      <Source
+                        id="24nm-outer-source"
+                        type="geojson"
+                        data={nm24OuterLine}
+                      >
+                        <Layer
+                          id="24nm-line"
+                          type="line"
+                          paint={{ "line-color": "#3b82f6", "line-width": 1.5 }}
+                        />
+                      </Source>
+                    )}
+                  </>
+                )}
+
+                {/* 12NM Territorial Sea */}
+                {show12nm && (
+                  <>
+                    <Source
+                      id="12nm-source"
+                      type="geojson"
+                      data="/geojson/sri_lanka_12nm.geojson"
+                    >
+                      <Layer
+                        id="12nm-fill"
+                        type="fill"
+                        paint={{ "fill-color": "#1d4ed8", "fill-opacity": 0.1 }}
+                      />
+                    </Source>
+                    {nm12OuterLine && (
+                      <Source
+                        id="12nm-outer-source"
+                        type="geojson"
+                        data={nm12OuterLine}
+                      >
+                        <Layer
+                          id="12nm-line"
+                          type="line"
+                          paint={{ "line-color": "#1d4ed8", "line-width": 1.5 }}
+                        />
+                      </Source>
+                    )}
+                  </>
+                )}
+              </>
+            )}
           </Map>
 
           {/* Jaffna controls overlay - passes the mapRef so it can add/update hotspot layer */}
-          <UnifiedMapControls mapRef={mapRef} />
+          <UnifiedMapControls
+            mapRef={mapRef}
+            onTopPrediction={(hotspot) => {
+              setSelectedHotspot(hotspot);
+              setManualDestination(null);
+            }}
+          />
+
+          {/* Maritime Boundary Legend Overlay */}
+          <div className="absolute bottom-6 right-6 z-20 pointer-events-none">
+            <div className="glass-card bg-white/95 dark:bg-slate-900/95 backdrop-blur-md p-3 rounded-xl shadow-lg border border-slate-200 dark:border-slate-700 pointer-events-auto flex flex-col gap-1.5 min-w-[220px]">
+              <div className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1 px-1 flex items-center gap-1.5">
+                <Flag className="w-3 h-3" />
+                <span>Fishing Boundaries</span>
+              </div>
+
+              <button
+                onClick={() => setShow12nm((v) => !v)}
+                className={`flex items-center gap-2.5 px-1 py-1 rounded transition-colors text-left w-full ${show12nm ? "hover:bg-slate-50 dark:hover:bg-slate-800" : "opacity-40 hover:opacity-60 hover:bg-slate-50 dark:hover:bg-slate-800"}`}
+                title="Toggle Territorial Sea boundary"
+              >
+                <div
+                  className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${show12nm ? "bg-[#1d4ed8]/20 border-[#1d4ed8]" : "bg-slate-200 border-slate-400 dark:bg-slate-700 dark:border-slate-500"}`}
+                >
+                  <div
+                    className={`w-1.5 h-1.5 rounded-full transition-colors ${show12nm ? "bg-[#1d4ed8]" : "bg-slate-400"}`}
+                  ></div>
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-xs font-bold text-slate-800 dark:text-slate-200 leading-none">
+                    Territorial Sea
+                  </span>
+                  <span className="text-[10px] text-slate-500 leading-none mt-1">
+                    12 Nautical Miles
+                  </span>
+                </div>
+                <span
+                  className={`ml-auto text-[10px] font-medium ${show12nm ? "text-[#1d4ed8]" : "text-slate-400"}`}
+                >
+                  {show12nm ? "ON" : "OFF"}
+                </span>
+              </button>
+
+              <button
+                onClick={() => setShow24nm((v) => !v)}
+                className={`flex items-center gap-2.5 px-1 py-1 rounded transition-colors text-left w-full ${show24nm ? "hover:bg-slate-50 dark:hover:bg-slate-800" : "opacity-40 hover:opacity-60 hover:bg-slate-50 dark:hover:bg-slate-800"}`}
+                title="Toggle Contiguous Zone boundary"
+              >
+                <div
+                  className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${show24nm ? "bg-[#3b82f6]/20 border-[#3b82f6]" : "bg-slate-200 border-slate-400 dark:bg-slate-700 dark:border-slate-500"}`}
+                >
+                  <div
+                    className={`w-1.5 h-1.5 rounded-full transition-colors ${show24nm ? "bg-[#3b82f6]" : "bg-slate-400"}`}
+                  ></div>
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-xs font-bold text-slate-800 dark:text-slate-200 leading-none">
+                    Contiguous Zone
+                  </span>
+                  <span className="text-[10px] text-slate-500 leading-none mt-1">
+                    24 Nautical Miles
+                  </span>
+                </div>
+                <span
+                  className={`ml-auto text-[10px] font-medium ${show24nm ? "text-[#3b82f6]" : "text-slate-400"}`}
+                >
+                  {show24nm ? "ON" : "OFF"}
+                </span>
+              </button>
+
+              <button
+                onClick={() => setShowEEZ((v) => !v)}
+                className={`flex items-center gap-2.5 px-1 py-1 rounded transition-colors text-left w-full ${showEEZ ? "hover:bg-slate-50 dark:hover:bg-slate-800" : "opacity-40 hover:opacity-60 hover:bg-slate-50 dark:hover:bg-slate-800"}`}
+                title="Toggle EEZ boundary"
+              >
+                <div
+                  className={`w-4 h-4 rounded border-dashed border flex items-center justify-center transition-colors ${showEEZ ? "bg-[#ef4444]/10 border-[#ef4444]" : "bg-slate-200 border-slate-400 dark:bg-slate-700 dark:border-slate-500"}`}
+                >
+                  <div
+                    className={`w-1.5 h-1.5 rounded-full transition-colors ${showEEZ ? "bg-[#ef4444]" : "bg-slate-400"}`}
+                  ></div>
+                </div>
+                <div className="flex flex-col">
+                  <span className="text-xs font-bold text-slate-800 dark:text-slate-200 leading-none">
+                    EEZ (Fishing Border)
+                  </span>
+                  <span className="text-[10px] text-slate-500 leading-none mt-1">
+                    Exclusive Economic Zone
+                  </span>
+                </div>
+                <span
+                  className={`ml-auto text-[10px] font-medium ${showEEZ ? "text-[#ef4444]" : "text-slate-400"}`}
+                >
+                  {showEEZ ? "ON" : "OFF"}
+                </span>
+              </button>
+            </div>
+          </div>
         </CardContent>
       </Card>
 
@@ -2387,10 +2631,10 @@ export default function HotspotMap() {
                     r.hazardScore > 50 || r.counts.DANGER > 0
                       ? "High Risk"
                       : r.hazardScore > 20 ||
-                        r.counts.HIGH > 0 ||
-                        r.counts.MEDIUM > 5
-                      ? "Medium Risk"
-                      : "Safe";
+                          r.counts.HIGH > 0 ||
+                          r.counts.MEDIUM > 5
+                        ? "Medium Risk"
+                        : "Safe";
 
                   return (
                     <div
@@ -2399,7 +2643,7 @@ export default function HotspotMap() {
                         setSelectedRouteType(r.routeType as any);
                         if (alternativeRoutes.length > 0) {
                           const chosen = alternativeRoutes.find(
-                            (ar) => ar.routeType === r.routeType
+                            (ar) => ar.routeType === r.routeType,
                           );
                           if (chosen) {
                             setRouteWeatherPoints(chosen.routeWeatherPoints);
@@ -2489,7 +2733,7 @@ export default function HotspotMap() {
                 const isRecommended = idx === 0; // First item has lowest hazard score
                 const isCurrent =
                   Math.abs(
-                    analysis.departureTime.getTime() - departureTime.getTime()
+                    analysis.departureTime.getTime() - departureTime.getTime(),
                   ) < 60000;
 
                 return (
@@ -2499,8 +2743,8 @@ export default function HotspotMap() {
                       isRecommended
                         ? "bg-green-50 dark:bg-green-950 border-green-500"
                         : isCurrent
-                        ? "bg-blue-50 dark:bg-blue-950 border-blue-400"
-                        : "bg-gray-50 dark:bg-slate-800 border-gray-300 dark:border-slate-600"
+                          ? "bg-blue-50 dark:bg-blue-950 border-blue-400"
+                          : "bg-gray-50 dark:bg-slate-800 border-gray-300 dark:border-slate-600"
                     }`}
                   >
                     <div className="flex items-start justify-between gap-3">
@@ -2535,10 +2779,10 @@ export default function HotspotMap() {
                               analysis.overallStatus === "Safe"
                                 ? "bg-green-100 text-green-700 border-green-400"
                                 : analysis.overallStatus === "Moderate Risk"
-                                ? "bg-yellow-100 text-yellow-700 border-yellow-400"
-                                : analysis.overallStatus === "High Risk"
-                                ? "bg-orange-100 text-orange-700 border-orange-400"
-                                : "bg-red-100 text-red-700 border-red-400"
+                                  ? "bg-yellow-100 text-yellow-700 border-yellow-400"
+                                  : analysis.overallStatus === "High Risk"
+                                    ? "bg-orange-100 text-orange-700 border-orange-400"
+                                    : "bg-red-100 text-red-700 border-red-400"
                             }`}
                           >
                             {analysis.overallStatus}
@@ -2594,25 +2838,25 @@ export default function HotspotMap() {
                                 {
                                   hour: "2-digit",
                                   minute: "2-digit",
-                                }
+                                },
                               )} on ${analysis.departureTime.toLocaleDateString(
                                 [],
                                 {
                                   month: "long",
                                   day: "numeric",
                                   year: "numeric",
-                                }
-                              )}. Re-scanning route with safer conditions...`
+                                },
+                              )}. Re-scanning route with safer conditions...`,
                             );
                             setTimeout(
                               () => setDepartureUpdateMessage(null),
-                              5000
+                              5000,
                             );
                             if (userLocation && destination) {
                               void fetchRouteWeather(
                                 userLocation,
                                 destination,
-                                15
+                                15,
                               );
                             }
                             setTimeAnalysis(null);
@@ -2816,8 +3060,8 @@ export default function HotspotMap() {
                                 safePercent > 80
                                   ? "text-green-600"
                                   : safePercent > 50
-                                  ? "text-yellow-600"
-                                  : "text-red-600"
+                                    ? "text-yellow-600"
+                                    : "text-red-600"
                               }`}
                             >
                               {safePercent}%
@@ -2900,8 +3144,8 @@ export default function HotspotMap() {
                   {manualDestination
                     ? "Manual Selection"
                     : selectedHotspot
-                    ? `${selectedHotspot.species} Hotspot`
-                    : "No destination"}
+                      ? `${selectedHotspot.species} Hotspot`
+                      : "No destination"}
                 </Badge>
               </div>
             </div>
@@ -3049,7 +3293,7 @@ export default function HotspotMap() {
                     value={boatSpeedKmh}
                     onChange={(e) =>
                       setBoatSpeedKmh(
-                        Math.max(1, parseFloat(e.target.value) || 10)
+                        Math.max(1, parseFloat(e.target.value) || 10),
                       )
                     }
                     className="w-24 px-3 py-1.5 text-sm font-semibold text-right border border-slate-200 dark:border-slate-600 rounded-lg focus:ring-2 focus:ring-sky-500 focus:border-sky-500 outline-none transition-all bg-white dark:bg-slate-700 text-slate-900 dark:text-slate-100"
@@ -3094,14 +3338,13 @@ export default function HotspotMap() {
             <div className="space-y-3 pt-2">
               <button
                 onClick={() => {
-                  if (!userLocation) return;
-                  const start = userLocation;
+                  const start = effectiveStartLocation;
                   const end = destination;
                   if (!end) return;
                   void fetchRouteWeather(start, end, 15);
                 }}
                 className="w-full px-4 py-3 rounded-xl text-sm font-bold text-white bg-sky-600 hover:bg-sky-700 active:scale-[0.98] transition-all shadow-md shadow-sky-200 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                disabled={routeWeatherLoading || !userLocation}
+                disabled={routeWeatherLoading}
               >
                 {routeWeatherLoading ? (
                   <>
@@ -3118,14 +3361,13 @@ export default function HotspotMap() {
 
               <button
                 onClick={() => {
-                  if (!userLocation) return;
-                  const start = userLocation;
+                  const start = effectiveStartLocation;
                   const end = destination;
                   if (!end) return;
                   void analyzeMultipleTimes(start, end, 15);
                 }}
                 className="w-full px-4 py-3 rounded-xl text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-700 active:scale-[0.98] transition-all shadow-md shadow-indigo-200 flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
-                disabled={analyzingTimes || !userLocation || !destination}
+                disabled={analyzingTimes || !destination}
               >
                 <span className="text-lg">⏱️</span>
                 <span>Find Safer Time</span>
@@ -3152,13 +3394,13 @@ export default function HotspotMap() {
                   <p className="text-sm font-bold text-slate-800 dark:text-slate-100 mt-0.5">
                     {manualDestination
                       ? `${manualDestination.lat.toFixed(
-                          3
+                          3,
                         )}°N, ${manualDestination.lng.toFixed(3)}°E`
                       : selectedHotspot
-                      ? `${selectedHotspot.lat.toFixed(
-                          3
-                        )}°N, ${selectedHotspot.lng.toFixed(3)}°E`
-                      : "No selection"}
+                        ? `${selectedHotspot.lat.toFixed(
+                            3,
+                          )}°N, ${selectedHotspot.lng.toFixed(3)}°E`
+                        : "No selection"}
                   </p>
                   {manualDestination && (
                     <Badge variant="secondary" className="mt-1 text-[10px] h-5">
@@ -3197,8 +3439,8 @@ export default function HotspotMap() {
                         selectedHotspot.probability > 0.7
                           ? "bg-emerald-500"
                           : selectedHotspot.probability > 0.4
-                          ? "bg-amber-500"
-                          : "bg-rose-500"
+                            ? "bg-amber-500"
+                            : "bg-rose-500"
                       }`}
                       style={{ width: `${selectedHotspot.probability * 100}%` }}
                     />
@@ -3295,7 +3537,7 @@ export default function HotspotMap() {
                   <span className="text-[10px] font-medium text-sky-700 dark:text-sky-300 bg-sky-100 dark:bg-sky-900 px-2 py-0.5 rounded-full">
                     {new Date(localWeather.current.time).toLocaleTimeString(
                       [],
-                      { hour: "2-digit", minute: "2-digit" }
+                      { hour: "2-digit", minute: "2-digit" },
                     )}
                   </span>
                 )}
@@ -3381,39 +3623,6 @@ export default function HotspotMap() {
                 </div>
               )}
             </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border-border">
-          <CardHeader>
-            <CardTitle className="text-foreground">All Hotspots</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-2">
-            {mockHotspots.map((hotspot, idx) => (
-              <button
-                key={idx}
-                onClick={() => handleHotspotSelect(hotspot)}
-                className={`w-full text-left p-3 rounded-lg border transition-all ${
-                  selectedHotspot === hotspot && !manualDestination
-                    ? "border-primary bg-primary/10"
-                    : "border-border bg-card hover:bg-accent"
-                }`}
-              >
-                <div className="flex items-center justify-between">
-                  <div>
-                    <p className="font-medium text-foreground">
-                      {hotspot.species}
-                    </p>
-                    <p className="text-xs text-muted-foreground">
-                      {hotspot.lat.toFixed(2)}°N, {hotspot.lng.toFixed(2)}°E
-                    </p>
-                  </div>
-                  <Badge variant="outline">
-                    {(hotspot.probability * 100).toFixed(0)}%
-                  </Badge>
-                </div>
-              </button>
-            ))}
           </CardContent>
         </Card>
       </div>

@@ -17,12 +17,11 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Progress } from "@/components/ui/progress";
-import { mockHotspots } from "@/services/mockData";
-import { useState, useEffect } from "react";
+import { useState, useEffect, useMemo } from "react";
 import {
   Ship,
   Fuel,
-  DollarSign,
+  Compass,
   Calculator,
   CheckSquare,
   AlertTriangle,
@@ -32,6 +31,11 @@ import {
   Navigation,
   Loader2,
   RefreshCw,
+  MapPin,
+  CalendarCheck,
+  CloudLightning,
+  Waves,
+  X,
 } from "lucide-react";
 import { useTheme } from "next-themes";
 import {
@@ -46,13 +50,6 @@ import {
   getRouteSeaConditions,
   SeaCondition,
 } from "@/services/weatherConditions";
-
-const HARBORS = {
-  colombo: { lat: 6.9271, lng: 79.8612, name: "Colombo Harbor" },
-  galle: { lat: 6.0535, lng: 80.221, name: "Galle Harbor" },
-  trinco: { lat: 8.5874, lng: 81.2152, name: "Trincomalee Harbor" },
-  negombo: { lat: 7.2008, lng: 79.8737, name: "Negombo Harbor" },
-};
 
 const SAFETY_ITEMS = [
   { id: "lifejackets", label: "Life Jackets (All Crew)", checked: false },
@@ -70,17 +67,14 @@ export default function TripPlanner() {
 
   // Trip Config State
   const [fuelRate, setFuelRate] = useState("25"); // L/hr base
-  const [fuelPrice, setFuelPrice] = useState("1.2");
-  const [selectedHotspots, setSelectedHotspots] = useState<number[]>([0, 1]);
-  const [selectedHarbor, setSelectedHarbor] =
-    useState<keyof typeof HARBORS>("colombo");
+  const [selectedHotspots, setSelectedHotspots] = useState<number[]>([0]);
 
   // Vessel & Logistics State
   const [tankCapacity, setTankCapacity] = useState("500"); // Liters
   const [currentFuelLevel, setCurrentFuelLevel] = useState("80"); // %
   const [seaCondition, setSeaCondition] = useState("calm"); // calm, choppy, rough
   const [selectedVessel, setSelectedVessel] = useState<string>(""); // Vessel ID
-  const [useRealCalculation, setUseRealCalculation] = useState(false);
+  const [useRealCalculation, setUseRealCalculation] = useState(true);
 
   // API State
   const [vessels, setVessels] = useState<any[]>([]);
@@ -91,11 +85,22 @@ export default function TripPlanner() {
   // Weather State
   const [realWeatherCondition, setRealWeatherCondition] =
     useState<SeaCondition | null>(null);
-  const [useRealWeather, setUseRealWeather] = useState(false);
+  const [useRealWeather, setUseRealWeather] = useState(true);
   const [isLoadingWeather, setIsLoadingWeather] = useState(false);
 
   // Checklist State
   const [checklist, setChecklist] = useState(SAFETY_ITEMS);
+
+  // Scan predictions loaded from localStorage (written by UnifiedMapControls after every scan)
+  const [scanPredictions, setScanPredictions] = useState<
+    Array<{ lat: number; lng: number; species: string }>
+  >([]);
+
+  // Start location from HotspotMap GPS — overrides the harbor selector
+  const [startLocation, setStartLocation] = useState<{
+    lat: number;
+    lng: number;
+  } | null>(null);
 
   // Load vessels on component mount
   const loadVessels = async () => {
@@ -122,33 +127,134 @@ export default function TripPlanner() {
     loadVessels();
   }, [toast]);
 
+  // Auto-fill tank capacity from selected vessel details
+  useEffect(() => {
+    if (!selectedVessel || vessels.length === 0) return;
+    const v = vessels.find((x) => (x._id || x.name) === selectedVessel);
+    if (!v) return;
+
+    // AddVesselDialog shape: specifications.fuelCapacity
+    const fromSpec = v.specifications?.fuelCapacity;
+    if (fromSpec && parseFloat(fromSpec) > 0) {
+      setTankCapacity(String(fromSpec));
+      return;
+    }
+    // UnifiedMaintenance shape: stats.fuelOnBoard e.g. "8,000 L"
+    const fromStats = v.stats?.fuelOnBoard;
+    if (fromStats) {
+      const parsed = parseFloat(String(fromStats).replace(/[^0-9.]/g, ""));
+      if (!isNaN(parsed) && parsed > 0) {
+        setTankCapacity(String(parsed));
+        return;
+      }
+    }
+  }, [selectedVessel, vessels]);
+
+  // Load hotspot predictions from localStorage (populated by map scan)
+  // Also picks up any manually confirmed destination from the Hotspot Map
+  const loadFromStorage = () => {
+    try {
+      // 1. Scan predictions from hotspot scan
+      let preds: { lat: number; lng: number; species: string }[] = [];
+      const raw = localStorage.getItem("fishspot_hotspot_scan");
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        const rawPreds: any[] = parsed?.result?.predictions ?? [];
+        const species: string = parsed?.meta?.species ?? "Fishing Ground";
+        preds = rawPreds
+          .sort((a: any, b: any) => b.score - a.score)
+          .map((p: any) => ({ lat: p.lat, lng: p.lon, species }));
+      }
+
+      // 2. Manually confirmed destination from map — prepend it so it shows as primary target
+      const rawDest = localStorage.getItem("fishspot_confirmed_destination");
+      if (rawDest) {
+        const dest = JSON.parse(rawDest);
+        if (dest?.lat && dest?.lng) {
+          preds = preds.filter(
+            (p) =>
+              Math.abs(p.lat - dest.lat) > 0.0001 ||
+              Math.abs(p.lng - dest.lng) > 0.0001,
+          );
+          preds.unshift({
+            lat: dest.lat,
+            lng: dest.lng,
+            species: dest.label ?? "Map Destination",
+          });
+        }
+      }
+
+      if (preds.length > 0) setScanPredictions(preds);
+      else setScanPredictions([]);
+
+      // 3. Load GPS start location from HotspotMap
+      //    Prefer explicit GPS location; fallback to startPoint saved with the scan
+      const rawStart = localStorage.getItem("fishspot_start_location");
+      if (rawStart) {
+        const start = JSON.parse(rawStart);
+        if (start?.lat && start?.lng) {
+          setStartLocation(start);
+        }
+      } else if (raw) {
+        // fallback: use the scan's own startPoint
+        try {
+          const scanStartPoint = JSON.parse(raw)?.startPoint;
+          if (scanStartPoint?.lat && scanStartPoint?.lng) {
+            setStartLocation({
+              lat: scanStartPoint.lat,
+              lng: scanStartPoint.lng,
+            });
+          }
+        } catch {
+          /* ignore */
+        }
+      }
+    } catch {
+      /* ignore corrupted localStorage */
+    }
+  };
+
+  const clearDestination = () => {
+    localStorage.removeItem("fishspot_confirmed_destination");
+    localStorage.removeItem("fishspot_hotspot_scan");
+    setScanPredictions([]);
+  };
+
+  useEffect(() => {
+    loadFromStorage();
+  }, []);
+
   // Calculate fuel consumption when parameters change
   useEffect(() => {
     if (useRealCalculation && selectedVessel && selectedHotspots.length > 0) {
       calculateRealFuelConsumption();
     }
-  }, [selectedHotspots, selectedHarbor, selectedVessel, useRealCalculation]);
+  }, [selectedHotspots, selectedVessel, useRealCalculation, startLocation]);
 
   // Fetch weather conditions when parameters change
   useEffect(() => {
     if (useRealWeather && selectedHotspots.length > 0) {
       fetchWeatherConditions();
     }
-  }, [selectedHotspots, selectedHarbor, useRealWeather]);
+  }, [selectedHotspots, useRealWeather, startLocation]);
 
   const fetchWeatherConditions = async () => {
     setIsLoadingWeather(true);
     try {
-      // Build coordinates for weather sampling
-      const harbor = HARBORS[selectedHarbor];
-      const coordinates = [harbor];
+      if (!startLocation) return;
+      const coordinates = [startLocation];
 
       selectedHotspots.forEach((idx) => {
-        const hotspot = mockHotspots[idx];
-        coordinates.push({ lat: hotspot.lat, lng: hotspot.lng });
+        const hotspot = scanPredictions[idx];
+        if (hotspot)
+          coordinates.push({
+            lat: hotspot.lat,
+            lng: hotspot.lng,
+            name: hotspot.species,
+          });
       });
 
-      coordinates.push(harbor); // return journey
+      coordinates.push(startLocation); // return journey
 
       const weatherCondition = await getRouteSeaConditions(coordinates);
       setRealWeatherCondition(weatherCondition);
@@ -175,23 +281,27 @@ export default function TripPlanner() {
 
     setIsCalculating(true);
     try {
-      // Build coordinates array: harbor -> hotspots -> harbor
-      const harbor = HARBORS[selectedHarbor];
-      const coordinates = [harbor];
+      if (!startLocation) return;
+      const coordinates = [startLocation];
 
       // Add selected hotspots
       selectedHotspots.forEach((idx) => {
-        const hotspot = mockHotspots[idx];
-        coordinates.push({ lat: hotspot.lat, lng: hotspot.lng });
+        const hotspot = scanPredictions[idx];
+        if (hotspot)
+          coordinates.push({
+            lat: hotspot.lat,
+            lng: hotspot.lng,
+            name: hotspot.species,
+          });
       });
 
-      // Return to harbor
-      coordinates.push(harbor);
+      // Return to start
+      coordinates.push(startLocation);
 
       // Try to find a matching fuel vessel for calculation
       // This is needed because the fuel API expects vessel_id from fuel database
       const selectedMaintenanceVessel = vessels.find(
-        (v) => (v._id || v.name) === selectedVessel
+        (v) => (v._id || v.name) === selectedVessel,
       );
       let vesselIdForCalculation = selectedVessel;
 
@@ -208,8 +318,8 @@ export default function TripPlanner() {
                 selectedMaintenanceVessel.type?.toLowerCase() &&
               Math.abs(
                 (fv.hp || 0) -
-                  (selectedMaintenanceVessel.specifications?.horsepower || 0)
-              ) <= 20
+                  (selectedMaintenanceVessel.specifications?.horsepower || 0),
+              ) <= 20,
           );
 
           if (matchingFuelVessel) {
@@ -252,29 +362,42 @@ export default function TripPlanner() {
     return spots.length * 85; // Simple estimation
   };
 
+  // baseDistance = full round-trip (start→hotspot→start) — used for fuel calculations
   const baseDistance =
     useRealCalculation && fuelCalculation
       ? fuelCalculation.totals.distance_km
       : calculateDistance(selectedHotspots);
+
+  // oneWayDistance = straight-line from GPS start to primary hotspot — shown in UI
+  const oneWayDistance: number | null = (() => {
+    const hotspot = scanPredictions[0];
+    if (!hotspot || !startLocation) return null;
+    return calculateGeoDistance(
+      startLocation.lat,
+      startLocation.lng,
+      hotspot.lat,
+      hotspot.lng,
+    );
+  })();
 
   // Weather Impact Multiplier - use real weather data when available
   const weatherMultiplier =
     useRealWeather && realWeatherCondition
       ? realWeatherCondition.fuelMultiplier
       : seaCondition === "rough"
-      ? 1.3
-      : seaCondition === "choppy"
-      ? 1.15
-      : 1.0;
+        ? 1.3
+        : seaCondition === "choppy"
+          ? 1.15
+          : 1.0;
 
   const speedMultiplier =
     useRealWeather && realWeatherCondition
       ? realWeatherCondition.speedMultiplier
       : seaCondition === "rough"
-      ? 0.7
-      : seaCondition === "choppy"
-      ? 0.85
-      : 1.0;
+        ? 0.7
+        : seaCondition === "choppy"
+          ? 0.85
+          : 1.0;
 
   // Adjusted Fuel Calculation
   const adjustedFuelRate = parseFloat(fuelRate || "0") * weatherMultiplier;
@@ -287,18 +410,13 @@ export default function TripPlanner() {
     useRealCalculation && fuelCalculation
       ? fuelCalculation.totals.fuel_consumption_liters * weatherMultiplier
       : estimatedDuration * adjustedFuelRate;
-  const fuelCost =
-    useRealCalculation && fuelCalculation
-      ? fuelCalculation.totals.fuel_cost_usd * weatherMultiplier
-      : fuelUsed * parseFloat(fuelPrice || "0");
 
   // Tank Analysis
   const tankCap = parseFloat(tankCapacity || "0");
-  const currentLevelPct = parseFloat(currentFuelLevel || "0");
-  const fuelOnboard = tankCap * (currentLevelPct / 100);
+  const fuelOnboard = parseFloat(currentFuelLevel || "0"); // Input is now in Liters
   const reserveFuel = tankCap * 0.2; // 20% reserve
   const fuelRemainingAfterTrip = fuelOnboard - fuelUsed;
-  const maxRange = (fuelOnboard / adjustedFuelRate) * 20; // km
+  const maxRange = (fuelOnboard / adjustedFuelRate) * baseSpeed; // km — weather-adjusted speed
 
   // Status Logic
   const hasEnoughFuel = fuelRemainingAfterTrip > 0;
@@ -312,621 +430,654 @@ export default function TripPlanner() {
   const toggleCheck = (id: string) => {
     setChecklist(
       checklist.map((item) =>
-        item.id === id ? { ...item, checked: !item.checked } : item
-      )
+        item.id === id ? { ...item, checked: !item.checked } : item,
+      ),
     );
   };
 
+  // Generate chaotic plexus pattern
+  const plexusPattern = useMemo(() => {
+    const nodes: { x: number; y: number; r: number }[] = [];
+    const width = 1000;
+    const height = 1000;
+    const nodeCount = 80;
+
+    // Generate random nodes
+    for (let i = 0; i < nodeCount; i++) {
+      nodes.push({
+        x: Math.random() * width,
+        y: Math.random() * height,
+        r: Math.random() * 4 + 2,
+      });
+    }
+
+    // Generate connections based on distance
+    const lines: {
+      x1: number;
+      y1: number;
+      x2: number;
+      y2: number;
+      opacity: number;
+    }[] = [];
+    nodes.forEach((node, i) => {
+      nodes.slice(i + 1).forEach((otherNode) => {
+        const dist = Math.hypot(node.x - otherNode.x, node.y - otherNode.y);
+        if (dist < 200) {
+          lines.push({
+            x1: node.x,
+            y1: node.y,
+            x2: otherNode.x,
+            y2: otherNode.y,
+            opacity: 1 - dist / 200,
+          });
+        }
+      });
+    });
+
+    return { nodes, lines };
+  }, []);
+
   return (
-    <div className="space-y-6">
-      <div>
-        <h2 className="text-3xl font-bold text-foreground mb-2">
-          Trip Planner & Logistics
-        </h2>
-        <p className="text-muted-foreground">
-          Plan your route, fuel requirements, and vessel readiness
-        </p>
+    <div className="relative min-h-screen w-full overflow-hidden bg-slate-50 dark:bg-slate-950 p-6">
+      {/* Background */}
+      <div className="absolute inset-0 z-0 opacity-40 dark:opacity-20 pointer-events-none">
+        <svg className="w-full h-full" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <pattern
+              id="trip-plexus"
+              x="0"
+              y="0"
+              width="1000"
+              height="1000"
+              patternUnits="userSpaceOnUse"
+            >
+              {plexusPattern.lines.map((line, i) => (
+                <line
+                  key={`line-${i}`}
+                  x1={line.x1}
+                  y1={line.y1}
+                  x2={line.x2}
+                  y2={line.y2}
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  className="text-slate-300 dark:text-sky-900"
+                  style={{ opacity: line.opacity }}
+                />
+              ))}
+              {plexusPattern.nodes.map((node, i) => (
+                <circle
+                  key={`node-${i}`}
+                  cx={node.x}
+                  cy={node.y}
+                  r={node.r}
+                  className="fill-slate-300 dark:fill-sky-900"
+                />
+              ))}
+            </pattern>
+          </defs>
+          <rect width="100%" height="100%" fill="url(#trip-plexus)" />
+        </svg>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-3">
-        {/* Left Column: Configuration */}
-        <Card className="border-border lg:col-span-1 h-fit">
-          <CardHeader>
-            <CardTitle className="text-foreground flex items-center gap-2">
-              <Ship className="h-5 w-5 text-primary" />
-              Trip Configuration
-            </CardTitle>
-            <CardDescription>Set vessel and route parameters</CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="harbor">Departure Harbor</Label>
-              <Select
-                value={selectedHarbor}
-                onValueChange={(v: any) => setSelectedHarbor(v)}
-              >
-                <SelectTrigger id="harbor">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="colombo">Colombo</SelectItem>
-                  <SelectItem value="galle">Galle</SelectItem>
-                  <SelectItem value="trinco">Trincomalee</SelectItem>
-                  <SelectItem value="negombo">Negombo</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <div className="flex items-center justify-between">
-                <Label htmlFor="vessel">Vessel Selection</Label>
-                <AddVesselDialog onVesselAdded={loadVessels} />
+      <div className="relative z-10 max-w-7xl mx-auto space-y-8">
+        {/* Header */}
+        <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4">
+          <div>
+            <div className="flex items-center gap-3 mb-1">
+              <div className="p-2 bg-sky-100 dark:bg-sky-900/40 rounded-lg">
+                <Compass className="h-6 w-6 text-sky-600 dark:text-sky-400" />
               </div>
-              <Select
-                value={selectedVessel}
-                onValueChange={setSelectedVessel}
-                disabled={isLoadingVessels}
-              >
-                <SelectTrigger id="vessel">
-                  <SelectValue
-                    placeholder={
-                      isLoadingVessels ? "Loading vessels..." : "Select vessel"
-                    }
-                  />
-                </SelectTrigger>
-                <SelectContent>
-                  {vessels.map((vessel) => (
-                    <SelectItem
-                      key={vessel._id || vessel.name}
-                      value={vessel._id || vessel.name}
-                    >
-                      {vessel.name} - {vessel.type} (
-                      {vessel.specifications?.horsepower || "N/A"}HP)
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              {isLoadingVessels && (
-                <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                  <Loader2 className="h-3 w-3 animate-spin" />
-                  Loading vessel data...
-                </div>
+              <h1 className="text-3xl font-bold text-slate-900 dark:text-white tracking-tight">
+                Mission Control
+              </h1>
+            </div>
+            <p className="text-slate-500 dark:text-slate-400 max-w-lg">
+              Advanced logistics planning and risk assessment system
+            </p>
+          </div>
+
+          <div className="flex items-center gap-3 bg-white/50 dark:bg-slate-900/50 backdrop-blur-sm p-2 rounded-xl border border-slate-200 dark:border-slate-800">
+            <div
+              className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border ${
+                hasEnoughFuel && !cutsIntoReserve
+                  ? "bg-emerald-50 border-emerald-200 text-emerald-700 dark:bg-emerald-950/30 dark:border-emerald-900 dark:text-emerald-400"
+                  : cutsIntoReserve
+                    ? "bg-amber-50 border-amber-200 text-amber-700 dark:bg-amber-950/30 dark:border-amber-900 dark:text-amber-400"
+                    : "bg-red-50 border-red-200 text-red-700 dark:bg-red-950/30 dark:border-red-900 dark:text-red-400"
+              }`}
+            >
+              {hasEnoughFuel && !cutsIntoReserve ? (
+                <CalendarCheck className="h-4 w-4" />
+              ) : (
+                <AlertTriangle className="h-4 w-4" />
               )}
+              <span className="text-sm font-bold uppercase tracking-wide">
+                {!hasEnoughFuel
+                  ? "Mission Critical"
+                  : cutsIntoReserve
+                    ? "Caution Required"
+                    : "Ready for Launch"}
+              </span>
             </div>
+          </div>
+        </div>
 
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  id="useReal"
-                  checked={useRealCalculation}
-                  onChange={(e) => setUseRealCalculation(e.target.checked)}
-                  className="rounded border-border accent-primary"
-                  disabled={!selectedVessel || vessels.length === 0}
-                />
-                <Label htmlFor="useReal" className="text-sm">
-                  Use Real Fuel Calculations
-                </Label>
-                {isCalculating && (
-                  <Loader2 className="h-4 w-4 animate-spin text-primary" />
-                )}
-              </div>
-              <p className="text-xs text-muted-foreground">
-                {useRealCalculation
-                  ? "Using backend API for accurate fuel consumption based on vessel specifications"
-                  : "Using estimated calculations based on manual fuel rate settings"}
-              </p>
-            </div>
-
-            <div className="space-y-2">
-              <div className="flex items-center gap-2">
-                <input
-                  type="checkbox"
-                  id="useWeather"
-                  checked={useRealWeather}
-                  onChange={(e) => setUseRealWeather(e.target.checked)}
-                  className="rounded border-border accent-primary"
-                />
-                <Label htmlFor="useWeather" className="text-sm">
-                  Use Real Weather Conditions
-                </Label>
-                {isLoadingWeather && (
-                  <Loader2 className="h-4 w-4 animate-spin text-primary" />
-                )}
-              </div>
-              <p className="text-xs text-muted-foreground">
-                {useRealWeather
-                  ? "Fetching live weather data from Open-Meteo Marine API"
-                  : "Using manual sea condition settings"}
-              </p>
-              {useRealWeather && realWeatherCondition && (
-                <div className="text-xs p-2 bg-accent rounded border">
-                  <div className="font-medium text-foreground mb-1">
-                    Current Conditions:
-                  </div>
-                  <div className="text-muted-foreground space-y-1">
-                    <div>
-                      Wind: {realWeatherCondition.windSpeed.toFixed(1)} m/s
-                    </div>
-                    <div>
-                      Waves: {realWeatherCondition.waveHeight.toFixed(1)} m
-                    </div>
-                    <div>
-                      Fuel Impact: +
-                      {(
-                        (realWeatherCondition.fuelMultiplier - 1) *
-                        100
-                      ).toFixed(0)}
-                      %
-                    </div>
-                    <div className="text-xs italic">
-                      {realWeatherCondition.description}
-                    </div>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-2">
-                <Label htmlFor="fuelRate">Base Fuel (L/hr)</Label>
-                <Input
-                  id="fuelRate"
-                  type="number"
-                  value={fuelRate}
-                  onChange={(e) => setFuelRate(e.target.value)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label htmlFor="fuelPrice">Price ($/L)</Label>
-                <Input
-                  id="fuelPrice"
-                  type="number"
-                  step="0.1"
-                  value={fuelPrice}
-                  onChange={(e) => setFuelPrice(e.target.value)}
-                />
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label>Select Hotspots</Label>
-              <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
-                {mockHotspots.map((hotspot, idx) => (
-                  <label
-                    key={idx}
-                    className={`flex items-center gap-2 p-2 rounded-lg border transition-colors cursor-pointer ${
-                      selectedHotspots.includes(idx)
-                        ? "bg-primary/10 border-primary"
-                        : "border-border hover:bg-accent"
-                    }`}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={selectedHotspots.includes(idx)}
-                      onChange={(e) => {
-                        if (e.target.checked) {
-                          setSelectedHotspots([...selectedHotspots, idx]);
-                        } else {
-                          setSelectedHotspots(
-                            selectedHotspots.filter((i) => i !== idx)
-                          );
-                        }
-                      }}
-                      className="rounded border-border accent-primary"
-                    />
-                    <div className="flex-1 text-sm">
-                      <p className="font-medium text-foreground">
-                        {hotspot.species}
-                      </p>
-                      <p className="text-xs text-muted-foreground">
-                        {hotspot.lat.toFixed(2)}°N, {hotspot.lng.toFixed(2)}°E
-                      </p>
-                    </div>
-                    <Badge
-                      variant={
-                        selectedHotspots.includes(idx) ? "default" : "outline"
-                      }
-                      className="text-xs"
-                    >
-                      {(hotspot.probability * 100).toFixed(0)}%
-                    </Badge>
-                  </label>
-                ))}
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Right Column: Tools */}
-        <div className="lg:col-span-2 space-y-6">
-          {/* 1. Fuel Range & Logistics */}
-          <Card className="border-border shadow-md">
-            <CardHeader className="pb-2">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-foreground flex items-center gap-2">
-                  <Gauge className="h-5 w-5 text-blue-500" />
-                  Fuel Range & Logistics
-                  {useRealCalculation && (
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={calculateRealFuelConsumption}
-                      disabled={isCalculating || !selectedVessel}
-                      className="ml-auto"
-                    >
-                      {isCalculating ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <RefreshCw className="h-4 w-4" />
-                      )}
-                    </Button>
-                  )}
+        <div className="grid gap-8 lg:grid-cols-12">
+          {/* LEFT COLUMN: SETTINGS */}
+          <div className="lg:col-span-4 space-y-6">
+            <Card className="backdrop-blur-md bg-white/70 dark:bg-slate-900/60 border-slate-200 dark:border-slate-800 shadow-xl overflow-hidden">
+              <div className="absolute top-0 left-0 w-1 h-full bg-sky-500"></div>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-lg">
+                  <AccordionIcon className="h-5 w-5 text-sky-500" />
+                  Mission Configuration
                 </CardTitle>
-                <div className="flex items-center gap-2">
-                  <Badge
-                    variant={
-                      hasEnoughFuel && !cutsIntoReserve
-                        ? "default"
-                        : "destructive"
-                    }
-                    className={
-                      hasEnoughFuel && !cutsIntoReserve
-                        ? "bg-green-600"
-                        : cutsIntoReserve
-                        ? "bg-amber-500"
-                        : ""
-                    }
-                  >
-                    {!hasEnoughFuel
-                      ? "Insufficient Fuel"
-                      : cutsIntoReserve
-                      ? "Reserve Warning"
-                      : "Fuel Sufficient"}
-                  </Badge>
-                  {useRealCalculation && (
-                    <Badge variant="outline" className="text-xs">
-                      API Calculation
-                    </Badge>
-                  )}
-                  {useRealWeather && (
-                    <Badge
-                      variant="outline"
-                      className="text-xs bg-blue-50 text-blue-700 border-blue-200"
-                    >
-                      Live Weather
-                    </Badge>
-                  )}
-                </div>
-              </div>
-              <CardDescription>
-                Analyze vessel range and fuel requirements based on conditions.
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="grid md:grid-cols-2 gap-8">
-                <div className="space-y-5">
-                  {/* Inputs */}
-                  <div className="grid grid-cols-2 gap-4">
-                    <div className="space-y-2">
-                      <Label
-                        htmlFor="tank"
-                        className="flex items-center gap-1 text-xs uppercase tracking-wide text-muted-foreground"
+                <CardDescription>
+                  Set parameters for the upcoming voyage
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-5">
+                <div className="space-y-3">
+                  <Label className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                    Vessel
+                  </Label>
+                  <div className="grid gap-3">
+                    <div className="flex gap-2">
+                      <Select
+                        value={selectedVessel}
+                        onValueChange={setSelectedVessel}
+                        disabled={isLoadingVessels}
                       >
-                        Tank Capacity (L)
+                        <SelectTrigger className="bg-slate-50 dark:bg-slate-950/50 flex-1">
+                          <div className="flex items-center gap-2">
+                            <Ship className="h-4 w-4 text-sky-500" />
+                            <SelectValue
+                              placeholder={
+                                isLoadingVessels
+                                  ? "Loading..."
+                                  : "Select Vessel"
+                              }
+                            />
+                          </div>
+                        </SelectTrigger>
+                        <SelectContent>
+                          {vessels.map((v) => (
+                            <SelectItem
+                              key={v._id || v.name}
+                              value={v._id || v.name}
+                            >
+                              {v.name} ({v.type})
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                      <AddVesselDialog onVesselAdded={loadVessels} />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-3">
+                  <Label className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                    Logistics Data
+                  </Label>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <Label className="text-[10px] text-slate-400">
+                        TANK CAPACITY (L)
                       </Label>
                       <Input
-                        id="tank"
                         type="number"
                         value={tankCapacity}
                         onChange={(e) => setTankCapacity(e.target.value)}
-                        className="font-bold"
+                        className="bg-slate-50 dark:bg-slate-950/50 font-mono"
                       />
                     </div>
-                    <div className="space-y-2">
-                      <Label
-                        htmlFor="level"
-                        className="flex items-center gap-1 text-xs uppercase tracking-wide text-muted-foreground"
-                      >
-                        Current Level (%)
+                    <div className="space-y-1">
+                      <Label className="text-[10px] text-slate-400">
+                        CURRENT FUEL (L)
                       </Label>
                       <div className="relative">
                         <Input
-                          id="level"
                           type="number"
-                          min="0"
-                          max="100"
                           value={currentFuelLevel}
                           onChange={(e) => setCurrentFuelLevel(e.target.value)}
-                          className="font-bold pr-8"
+                          className="bg-slate-50 dark:bg-slate-950/50 font-mono pr-8"
                         />
-                        <span className="absolute right-3 top-2.5 text-sm text-muted-foreground">
-                          %
+                        <span className="absolute right-3 top-2.5 text-xs text-slate-400">
+                          L
                         </span>
                       </div>
                     </div>
                   </div>
-
-                  <div className="space-y-2">
-                    <Label className="flex items-center gap-1 text-xs uppercase tracking-wide text-muted-foreground">
-                      Sea Conditions
-                      {useRealWeather && realWeatherCondition && (
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onClick={fetchWeatherConditions}
-                          disabled={isLoadingWeather}
-                          className="ml-auto h-5 px-2"
-                        >
-                          {isLoadingWeather ? (
-                            <Loader2 className="h-3 w-3 animate-spin" />
-                          ) : (
-                            <RefreshCw className="h-3 w-3" />
-                          )}
-                        </Button>
-                      )}
-                    </Label>
-                    <div className="grid grid-cols-3 gap-2">
-                      {["calm", "choppy", "rough"].map((cond) => (
-                        <button
-                          key={cond}
-                          onClick={() => setSeaCondition(cond)}
-                          disabled={useRealWeather}
-                          className={`py-2 px-3 rounded-lg text-sm font-medium border transition-all capitalize ${
-                            seaCondition === cond
-                              ? "bg-blue-100 dark:bg-blue-900/30 border-blue-500 text-blue-700 dark:text-blue-300 ring-1 ring-blue-500"
-                              : useRealWeather
-                              ? "bg-muted border-border text-muted-foreground opacity-50 cursor-not-allowed"
-                              : "bg-card border-border hover:bg-accent text-muted-foreground"
-                          }`}
-                        >
-                          {cond}
-                          {useRealWeather && seaCondition === cond && (
-                            <span className="ml-1 text-xs">📡</span>
-                          )}
-                        </button>
-                      ))}
-                    </div>
-                    <p className="text-[10px] text-muted-foreground text-right">
-                      {useRealWeather
-                        ? `Real Weather: +${(
-                            (weatherMultiplier - 1) *
-                            100
-                          ).toFixed(0)}% Fuel Usage`
-                        : seaCondition === "rough"
-                        ? "+30% Fuel Usage"
-                        : seaCondition === "choppy"
-                        ? "+15% Fuel Usage"
-                        : "Standard Consumption"}
-                    </p>
-                  </div>
-                </div>
-
-                {/* Visualization */}
-                <div className="flex flex-col justify-center space-y-4 bg-slate-50 dark:bg-slate-900/50 p-4 rounded-xl border border-slate-100 dark:border-slate-800">
                   <div className="space-y-1">
-                    <div className="flex justify-between text-sm font-medium">
-                      <span>Fuel Onboard</span>
-                      <span>{fuelOnboard.toFixed(0)} L</span>
-                    </div>
-                    <div className="h-6 w-full bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden relative">
-                      {/* Current Fuel Bar */}
-                      <div
-                        className="h-full bg-blue-500 absolute left-0 top-0"
-                        style={{ width: "100%" }}
-                      />
-                      {/* Usage Overlay */}
-                      <div
-                        className={`h-full absolute left-0 top-0 border-r-2 border-white/50 ${
-                          !hasEnoughFuel ? "bg-red-500/80" : "bg-transparent"
-                        } pattern-diagonal-lines`}
-                        style={{
-                          width: `${Math.min(
-                            100,
-                            (fuelUsed / fuelOnboard) * 100
-                          )}%`,
-                          backgroundImage:
-                            "linear-gradient(45deg, rgba(255,255,255,.15) 25%, transparent 25%, transparent 50%, rgba(255,255,255,.15) 50%, rgba(255,255,255,.15) 75%, transparent 75%, transparent)",
-                          backgroundSize: "1rem 1rem",
-                        }}
-                      />
-                    </div>
-                    <div className="flex justify-between text-xs text-muted-foreground mt-1">
-                      <span>0 L</span>
-                      <span>
-                        Required:{" "}
-                        <span className="font-bold text-foreground">
-                          {fuelUsed.toFixed(0)} L
-                        </span>
-                      </span>
-                      <span>{fuelOnboard.toFixed(0)} L</span>
-                    </div>
+                    <Label className="text-[10px] text-slate-400">
+                      BASE CONSUMPTION (L/HR)
+                    </Label>
+                    <Input
+                      type="number"
+                      value={fuelRate}
+                      onChange={(e) => setFuelRate(e.target.value)}
+                      className="bg-slate-50 dark:bg-slate-950/50 font-mono"
+                    />
                   </div>
+                </div>
 
-                  <div className="grid grid-cols-2 gap-4 pt-2">
-                    <div className="p-3 bg-card rounded-lg border border-border">
-                      <div className="text-[10px] uppercase text-muted-foreground font-bold">
-                        Max Range
-                      </div>
-                      <div className="text-xl font-black text-foreground">
-                        {maxRange.toFixed(0)} km
-                      </div>
-                      <div className="text-[10px] text-muted-foreground">
-                        @ current conditions
-                      </div>
-                    </div>
-                    <div className="p-3 bg-card rounded-lg border border-border">
-                      <div className="text-[10px] uppercase text-muted-foreground font-bold">
-                        Remaining
-                      </div>
-                      <div
-                        className={`text-xl font-black ${
-                          !hasEnoughFuel
-                            ? "text-red-500"
-                            : cutsIntoReserve
-                            ? "text-amber-500"
-                            : "text-green-500"
-                        }`}
+                <div className="space-y-3 pt-2 bg-slate-50 dark:bg-slate-900/40 p-3 rounded-xl border border-dashed border-slate-200 dark:border-slate-800">
+                  <div className="flex items-center justify-between">
+                    <Label className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+                      Target Destination
+                    </Label>
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={loadFromStorage}
+                        title="Refresh destination from map"
+                        className="p-1 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 hover:text-sky-500 transition-colors"
                       >
-                        {Math.max(0, fuelRemainingAfterTrip).toFixed(0)} L
+                        <RefreshCw className="w-3 h-3" />
+                      </button>
+                      {scanPredictions.length > 0 && (
+                        <button
+                          onClick={clearDestination}
+                          title="Clear destination"
+                          className="p-1 rounded hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-400 hover:text-red-500 transition-colors"
+                        >
+                          <X className="w-3 h-3" />
+                        </button>
+                      )}
+                      <Badge
+                        variant="outline"
+                        className="bg-sky-100 text-sky-700 border-sky-200 dark:bg-sky-900/30 dark:text-sky-400 dark:border-sky-800 text-[10px]"
+                      >
+                        FROM MAP
+                      </Badge>
+                    </div>
+                  </div>
+                  <div className="bg-white dark:bg-slate-950 rounded-lg border border-slate-200 dark:border-slate-800 p-3 shadow-sm relative overflow-hidden group">
+                    <div className="absolute top-0 left-0 w-1 h-full bg-sky-500"></div>
+                    {/* Destination Display */}
+                    {scanPredictions.length > 0 ? (
+                      (() => {
+                        const hotspot = scanPredictions[0];
+                        return (
+                          <div className="flex justify-between items-center pl-2">
+                            <div>
+                              <div className="flex items-center gap-2">
+                                <span className="text-sm font-bold text-slate-900 dark:text-white">
+                                  {hotspot.species}
+                                </span>
+                                <Badge className="bg-emerald-500 text-white text-[10px] h-4 px-1">
+                                  High Prob.
+                                </Badge>
+                              </div>
+                              <div className="flex items-center gap-2 mt-1 text-xs text-slate-500 font-mono">
+                                <span className="flex items-center gap-1">
+                                  <MapPin className="w-3 h-3" />{" "}
+                                  {hotspot.lat.toFixed(4)},{" "}
+                                  {hotspot.lng.toFixed(4)}
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })()
+                    ) : (
+                      <div className="flex items-center gap-2 pl-2 text-slate-400 text-sm">
+                        <MapPin className="w-4 h-4 opacity-40" />
+                        <span>Go to Map, select a hotspot or run a scan</span>
                       </div>
-                      <div className="text-[10px] text-muted-foreground">
-                        after trip
-                      </div>
-                    </div>
+                    )}
                   </div>
-
-                  {!hasEnoughFuel && (
-                    <div className="flex items-center gap-2 text-red-600 text-xs font-bold bg-red-50 dark:bg-red-900/20 p-2 rounded border border-red-100 dark:border-red-800">
-                      <AlertTriangle className="h-4 w-4" />
-                      WARNING: Not enough fuel for this trip!
-                    </div>
-                  )}
-                  {cutsIntoReserve && (
-                    <div className="flex items-center gap-2 text-amber-600 text-xs font-bold bg-amber-50 dark:bg-amber-900/20 p-2 rounded border border-amber-100 dark:border-amber-800">
-                      <Droplets className="h-4 w-4" />
-                      CAUTION: Trip cuts into 20% safety reserve.
-                    </div>
-                  )}
-
-                  {/* Sea Condition Risk Warnings */}
-                  {seaCondition === "rough" && (
-                    <div className="flex items-center gap-2 text-red-600 text-xs font-bold bg-red-50 dark:bg-red-900/20 p-2 rounded border border-red-100 dark:border-red-800 animate-pulse">
-                      <AlertTriangle className="h-4 w-4" />
-                      WARNING: High Risk Conditions. Navigation not recommended.
-                    </div>
-                  )}
-                  {seaCondition === "choppy" && (
-                    <div className="flex items-center gap-2 text-orange-600 text-xs font-bold bg-orange-50 dark:bg-orange-900/20 p-2 rounded border border-orange-100 dark:border-orange-800">
-                      <AlertTriangle className="h-4 w-4" />
-                      WARNING: Medium Risk. Experienced sailors only.
-                    </div>
-                  )}
                 </div>
-              </div>
-            </CardContent>
-          </Card>
 
-          {/* 2. Safety Checklist */}
-          <Card className="border-border">
-            <CardHeader className="pb-2">
-              <div className="flex items-center justify-between">
-                <CardTitle className="text-foreground flex items-center gap-2">
-                  <CheckSquare className="h-5 w-5 text-primary" />
-                  Pre-Departure Safety Check
-                </CardTitle>
-                <span className="text-sm font-bold text-muted-foreground">
-                  {checkedCount}/{checklist.length}
-                </span>
-              </div>
-              <Progress value={progress} className="h-2 mt-2" />
-            </CardHeader>
-            <CardContent>
-              <div className="grid sm:grid-cols-2 gap-3 mt-2">
-                {checklist.map((item) => (
-                  <div
-                    key={item.id}
-                    onClick={() => toggleCheck(item.id)}
-                    className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-all ${
-                      item.checked
-                        ? "bg-green-50 dark:bg-green-900/20 border-green-200 dark:border-green-800"
-                        : "bg-card border-border hover:bg-accent"
-                    }`}
-                  >
-                    <div
-                      className={`w-5 h-5 rounded border flex items-center justify-center transition-colors ${
-                        item.checked
-                          ? "bg-green-500 border-green-500 text-white"
-                          : "border-muted-foreground"
-                      }`}
-                    >
-                      {item.checked && <CheckSquare className="h-3.5 w-3.5" />}
-                    </div>
-                    <span
-                      className={`text-sm font-medium ${
-                        item.checked
-                          ? "text-foreground"
-                          : "text-muted-foreground"
-                      }`}
-                    >
-                      {item.label}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* 3. Cost Summary */}
-          <div className="grid gap-4 sm:grid-cols-3">
-            <Card className="border-border">
-              <CardHeader className="pb-2">
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Navigation className="h-4 w-4 text-primary" />
-                  <span>Total Distance</span>
+                <div className="hidden">
+                  {/* Advanced Data Section Removed as per request (Always ON) */}
                 </div>
-              </CardHeader>
-              <CardContent>
-                <p className="text-2xl font-bold text-foreground">
-                  {baseDistance}
-                </p>
-                <p className="text-xs text-muted-foreground">kilometers</p>
-              </CardContent>
-            </Card>
-
-            <Card className="border-border">
-              <CardHeader className="pb-2">
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <Fuel className="h-4 w-4 text-primary" />
-                  <span>Fuel Required</span>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <p className="text-2xl font-bold text-foreground">
-                  {fuelUsed.toFixed(0)}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  liters ({seaCondition})
-                </p>
-              </CardContent>
-            </Card>
-
-            <Card className="border-border">
-              <CardHeader className="pb-2">
-                <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                  <DollarSign className="h-4 w-4 text-primary" />
-                  <span>Est. Fuel Cost</span>
-                </div>
-              </CardHeader>
-              <CardContent>
-                <p className="text-2xl font-bold text-foreground">
-                  ${fuelCost.toFixed(0)}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  {useRealCalculation ? "API Calculation" : `@ $${fuelPrice}/L`}
-                </p>
-                {useRealCalculation && selectedVessel && (
-                  <div className="text-xs text-muted-foreground mt-1">
-                    Vessel:{" "}
-                    {vessels.find((v) => (v._id || v.name) === selectedVessel)
-                      ?.type || selectedVessel}
-                  </div>
-                )}
               </CardContent>
             </Card>
           </div>
+
+          {/* RIGHT COLUMN: STATUS */}
+          <div className="lg:col-span-8 space-y-6">
+            {/* TOP CARDS: ANALYSIS */}
+            <div className="grid md:grid-cols-2 gap-6">
+              {/* 1. Fuel Analysis */}
+              <Card className="backdrop-blur-md bg-white/70 dark:bg-slate-900/60 border-slate-200 dark:border-slate-800 shadow-lg group">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium uppercase tracking-widest text-slate-500 flex items-center justify-between">
+                    <span>Range Analysis</span>
+                    {isCalculating && (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    )}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="flex flex-col gap-6">
+                    {/* Primary Fuel Indicator */}
+                    <div className="flex flex-col items-center justify-center py-2">
+                      <div className="text-xs font-bold text-slate-400 uppercase tracking-widest mb-1">
+                        Estimated Fuel Required
+                      </div>
+                      <div className="flex items-baseline gap-2">
+                        <span
+                          className={`text-5xl font-black tracking-tighter ${
+                            !hasEnoughFuel
+                              ? "text-red-500"
+                              : "text-slate-900 dark:text-white"
+                          }`}
+                        >
+                          {fuelUsed.toFixed(0)}
+                        </span>
+                        <span className="text-xl font-bold text-slate-400">
+                          Liters
+                        </span>
+                      </div>
+                      {/* Comparison pill */}
+                      <div
+                        className={`mt-2 px-3 py-1 rounded-full text-xs font-bold border ${
+                          !hasEnoughFuel
+                            ? "bg-red-50 text-red-600 border-red-200 dark:bg-red-900/20 dark:border-red-800"
+                            : "bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-800 dark:text-slate-400 dark:border-slate-700"
+                        }`}
+                      >
+                        Uses {fuelUsed.toFixed(0)}L of {fuelOnboard.toFixed(0)}L
+                        available
+                      </div>
+                    </div>
+
+                    <div className="relative pt-2">
+                      {/* Fuel Visualization Bar */}
+                      <div className="h-3 w-full bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
+                        <div className="h-full bg-slate-300 dark:bg-slate-700 w-full relative">
+                          {/* Available Fuel Base (scaled to tank capacity if known, else relative) */}
+                          <div className="absolute top-0 left-0 h-full bg-slate-200 dark:bg-slate-700 w-full"></div>
+
+                          {/* Current Onboard Fuel Bar */}
+                          <div
+                            className="absolute top-0 left-0 h-full bg-sky-200 dark:bg-sky-900/50"
+                            style={{
+                              width: `${Math.min(100, (fuelOnboard / tankCap) * 100)}%`,
+                            }}
+                          ></div>
+
+                          {/* Usage Bar (Relative to Tank Capacity) */}
+                          <div
+                            className={`absolute top-0 left-0 h-full transition-all duration-1000 ${
+                              !hasEnoughFuel ? "bg-red-500" : "bg-sky-500"
+                            }`}
+                            style={{
+                              width: `${Math.min(100, (fuelUsed / tankCap) * 100)}%`,
+                            }}
+                          ></div>
+
+                          {/* Reserve Marker Line */}
+                          <div
+                            className="absolute top-0 left-[20%] h-full w-0.5 bg-red-400/50 z-10"
+                            title="Reserve Level"
+                          ></div>
+                        </div>
+                      </div>
+                      <div className="flex justify-between text-[10px] font-mono text-slate-400 mt-1.5 uppercase">
+                        <span>0 L</span>
+                        <span>Reserve ({reserveFuel.toFixed(0)} L)</span>
+                        <span>Capacity ({tankCap.toFixed(0)} L)</span>
+                      </div>
+                    </div>
+
+                    <div className="grid grid-cols-2 gap-4">
+                      {/* Total Trip Distance — shows one-way to match HotspotMap */}
+                      <div className="col-span-2 p-4 bg-sky-50/50 dark:bg-sky-900/20 rounded-xl border border-sky-100 dark:border-sky-800 flex items-center justify-between group-hover:border-sky-200 dark:group-hover:border-sky-700/50 transition-colors">
+                        <div>
+                          <div className="flex items-center gap-2 text-xs font-bold text-sky-600 dark:text-sky-400 uppercase tracking-widest mb-1">
+                            <MapPin className="w-3 h-3" />
+                            Distance to Destination
+                          </div>
+                          {oneWayDistance !== null ? (
+                            <>
+                              <div className="text-4xl font-black text-slate-900 dark:text-white tracking-tight">
+                                {oneWayDistance.toFixed(1)}
+                                <span className="text-lg text-slate-400 font-bold ml-1">
+                                  km
+                                </span>
+                              </div>
+                              <div className="text-[10px] text-slate-400 mt-1">
+                                Round trip: {(oneWayDistance * 2).toFixed(1)} km
+                              </div>
+                            </>
+                          ) : (
+                            <div className="text-sm text-slate-400 mt-1">
+                              Go to Map page, enable GPS or select a hotspot
+                            </div>
+                          )}
+                        </div>
+                        <div className="h-10 w-10 rounded-full bg-sky-100 dark:bg-sky-900 flex items-center justify-center">
+                          <Navigation className="h-5 w-5 text-sky-600 dark:text-sky-400" />
+                        </div>
+                      </div>
+
+                      <div className="p-3 bg-slate-50 dark:bg-slate-950/50 rounded-lg border border-slate-100 dark:border-slate-800">
+                        <div className="text-[10px] text-slate-400 font-bold uppercase mb-1">
+                          Max Range
+                        </div>
+                        <div className="text-2xl font-black text-slate-900 dark:text-white">
+                          {maxRange.toFixed(0)}{" "}
+                          <span className="text-sm text-slate-400 font-normal">
+                            km
+                          </span>
+                        </div>
+                      </div>
+                      <div className="p-3 bg-slate-50 dark:bg-slate-950/50 rounded-lg border border-slate-100 dark:border-slate-800">
+                        <div className="text-[10px] text-slate-400 font-bold uppercase mb-1">
+                          Fuel Remaining
+                        </div>
+                        <div
+                          className={`text-2xl font-black ${
+                            !hasEnoughFuel
+                              ? "text-red-500"
+                              : cutsIntoReserve
+                                ? "text-amber-500"
+                                : "text-emerald-500"
+                          }`}
+                        >
+                          {Math.max(0, fuelRemainingAfterTrip).toFixed(0)}{" "}
+                          <span className="text-sm text-slate-400 font-normal">
+                            L
+                          </span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+
+              {/* 2. Environmental Analysis */}
+              <Card className="backdrop-blur-md bg-white/70 dark:bg-slate-900/60 border-slate-200 dark:border-slate-800 shadow-lg">
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-sm font-medium uppercase tracking-widest text-slate-500 flex items-center justify-between">
+                    <span>Condition Assessment</span>
+                    {isLoadingWeather && (
+                      <Loader2 className="h-3 w-3 animate-spin" />
+                    )}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-6">
+                  <div className="flex gap-2">
+                    {["calm", "choppy", "rough"].map((cond) => (
+                      <button
+                        key={cond}
+                        onClick={() => !useRealWeather && setSeaCondition(cond)}
+                        disabled={useRealWeather}
+                        className={`flex-1 py-2 px-1 rounded-lg text-xs font-bold uppercase transition-all border ${
+                          seaCondition === cond
+                            ? cond === "rough"
+                              ? "bg-red-100 text-red-700 border-red-200 dark:bg-red-900/30"
+                              : cond === "choppy"
+                                ? "bg-amber-100 text-amber-700 border-amber-200 dark:bg-amber-900/30"
+                                : "bg-emerald-100 text-emerald-700 border-emerald-200 dark:bg-emerald-900/30"
+                            : "bg-slate-50 text-slate-400 border-slate-100 dark:bg-slate-900/50 dark:border-slate-800 opacity-60 hover:opacity-100"
+                        }`}
+                      >
+                        {cond}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-1.5 text-slate-500">
+                        <Waves className="h-4 w-4" />
+                        <span className="text-xs uppercase font-bold">
+                          Sea State
+                        </span>
+                      </div>
+                      <div className="text-sm font-medium text-slate-900 dark:text-white pl-5.5">
+                        {useRealWeather && realWeatherCondition
+                          ? `${realWeatherCondition.waveHeight.toFixed(1)}m Swells`
+                          : seaCondition === "rough"
+                            ? "> 2.0m Swells"
+                            : "Normal"}
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-1.5 text-slate-500">
+                        <Wind className="h-4 w-4" />
+                        <span className="text-xs uppercase font-bold">
+                          Wind
+                        </span>
+                      </div>
+                      <div className="text-sm font-medium text-slate-900 dark:text-white pl-5.5">
+                        {useRealWeather && realWeatherCondition
+                          ? `${realWeatherCondition.windSpeed.toFixed(1)} m/s`
+                          : "Variable"}
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="p-3 rounded-lg bg-slate-100 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700 flex items-center gap-3">
+                    <div className="p-2 bg-white dark:bg-slate-800 rounded-md shadow-sm">
+                      <Navigation className="h-4 w-4 text-sky-500" />
+                    </div>
+                    <div>
+                      <div className="text-[10px] uppercase text-slate-400 font-bold">
+                        Consumption Impact
+                      </div>
+                      <div className="text-sm font-bold text-slate-900 dark:text-white">
+                        + {((weatherMultiplier - 1) * 100).toFixed(0)}%{" "}
+                        <span className="font-normal text-slate-500">
+                          due to conditions
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* BOTTOM: PRE-FLIGHT CHECKLIST */}
+            <Card className="backdrop-blur-md bg-white/70 dark:bg-slate-900/60 border-slate-200 dark:border-slate-800 shadow-lg">
+              <CardHeader className="pb-4">
+                <div className="flex justify-between items-center">
+                  <CardTitle className="text-lg flex items-center gap-2">
+                    <CheckSquare className="h-5 w-5 text-sky-500" />
+                    Pre-Departure Safety Protocols
+                  </CardTitle>
+                  <Badge
+                    variant="outline"
+                    className={`font-mono ${progress === 100 ? "bg-emerald-50 text-emerald-600 border-emerald-200" : "bg-slate-100"}`}
+                  >
+                    {checkedCount}/{checklist.length} CLEARED
+                  </Badge>
+                </div>
+                <Progress value={progress} className="h-1.5 bg-slate-100" />
+              </CardHeader>
+              <CardContent>
+                <div className="grid sm:grid-cols-2 md:grid-cols-3 gap-3">
+                  {checklist.map((item) => (
+                    <div
+                      key={item.id}
+                      onClick={() => toggleCheck(item.id)}
+                      className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-all duration-200 group ${
+                        item.checked
+                          ? "bg-emerald-50/50 dark:bg-emerald-900/10 border-emerald-200 dark:border-emerald-800/30 shadow-sm"
+                          : "bg-white/50 dark:bg-slate-900/30 border-slate-100 dark:border-slate-800 hover:border-slate-300 dark:hover:border-slate-700"
+                      }`}
+                    >
+                      <div
+                        className={`w-8 h-8 rounded-full flex items-center justify-center transition-all ${
+                          item.checked
+                            ? "bg-emerald-500 text-white scale-110"
+                            : "bg-slate-200 dark:bg-slate-800 text-slate-400 group-hover:bg-slate-300"
+                        }`}
+                      >
+                        {item.checked ? (
+                          <CheckSquare className="h-4 w-4" />
+                        ) : (
+                          <div className="w-2 h-2 rounded-full bg-slate-400" />
+                        )}
+                      </div>
+                      <span
+                        className={`text-sm font-medium ${item.checked ? "text-slate-900 dark:text-slate-100" : "text-slate-500"}`}
+                      >
+                        {item.label}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Trip Enhancements (Market/Route) */}
+            <TripPlannerEnhancements
+              selectedVessel={selectedVessel}
+              selectedHotspots={selectedHotspots}
+              fuelCalculation={fuelCalculation}
+              seaCondition={seaCondition}
+              realWeatherCondition={realWeatherCondition}
+              useRealWeather={useRealWeather}
+            />
+          </div>
         </div>
       </div>
-
-      {/* Enhanced Trip Planning Features */}
-      <TripPlannerEnhancements
-        selectedVessel={selectedVessel}
-        selectedHotspots={selectedHotspots}
-        fuelCalculation={fuelCalculation}
-        seaCondition={seaCondition}
-        realWeatherCondition={realWeatherCondition}
-        useRealWeather={useRealWeather}
-      />
     </div>
+  );
+}
+
+function calculateGeoDistance(
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number,
+) {
+  const R = 6371; // km
+  const dLat = (lat2 - lat1) * (Math.PI / 180);
+  const dLon = (lon2 - lon1) * (Math.PI / 180);
+  const a =
+    Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+    Math.cos(lat1 * (Math.PI / 180)) *
+      Math.cos(lat2 * (Math.PI / 180)) *
+      Math.sin(dLon / 2) *
+      Math.sin(dLon / 2);
+  const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+  return R * c;
+}
+
+// Helper icon component
+function AccordionIcon(props: any) {
+  return (
+    <svg
+      {...props}
+      xmlns="http://www.w3.org/2000/svg"
+      width="24"
+      height="24"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M12 20V10" />
+      <path d="M18 20V4" />
+      <path d="M6 20v-4" />
+    </svg>
   );
 }

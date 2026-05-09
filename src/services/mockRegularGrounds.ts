@@ -1,118 +1,40 @@
+/**
+ * Named Sri Lankan fishing grounds — geographic reference data only.
+ * All prediction/confidence/weather values come from the live backend via
+ * predictFromPoint(). Nothing is hardcoded here.
+ */
 
 export interface RegularGround {
   id: string;
   name: string;
   lat: number;
   lng: number;
-  catchProbability: number; // 0-100
-  predictionLevel: 'Good' | 'Moderate' | 'Poor';
-  weatherFactors: {
-    windSpeed: number; // km/h
-    waveHeight: number; // m
-    rainProbability: number; // %
-    cloudCover: number; // %
-  };
-  historicalInfluence: {
-    lastTrips: number;
-    trend: 'Rising' | 'Stable' | 'Falling'; // "Seasonal pattern" representation
-  };
-  aiConfidence: 'High' | 'Medium' | 'Low';
 }
 
 export const mockRegularGrounds: RegularGround[] = [
+  { id: "colombo-bank", name: "Colombo Bank", lat: 6.85, lng: 79.75 },
   {
-    id: "rg1",
-    name: "North Point Reef",
-    lat: 9.85,
-    lng: 80.12,
-    catchProbability: 85,
-    predictionLevel: "Good",
-    weatherFactors: {
-      windSpeed: 12,
-      waveHeight: 0.8,
-      rainProbability: 10,
-      cloudCover: 25,
-    },
-    historicalInfluence: {
-      lastTrips: 5,
-      trend: "Rising",
-    },
-    aiConfidence: "High",
+    id: "trincomalee-grounds",
+    name: "Trincomalee Grounds",
+    lat: 8.65,
+    lng: 81.6,
   },
+  { id: "jaffna-bank", name: "Jaffna Bank", lat: 9.9, lng: 80.1 },
+  { id: "negombo-bank", name: "Negombo Bank", lat: 7.35, lng: 79.75 },
+  { id: "mannar-bank", name: "Mannar Bank", lat: 8.85, lng: 79.4 },
   {
-    id: "rg2",
-    name: "Deep Blue Trench",
-    lat: 9.72,
-    lng: 80.35,
-    catchProbability: 45,
-    predictionLevel: "Moderate",
-    weatherFactors: {
-      windSpeed: 22,
-      waveHeight: 1.5,
-      rainProbability: 40,
-      cloudCover: 60,
-    },
-    historicalInfluence: {
-      lastTrips: 3,
-      trend: "Stable",
-    },
-    aiConfidence: "Medium",
-  },
-  {
-    id: "rg3",
-    name: "Coral Banks",
-    lat: 9.60,
-    lng: 79.95,
-    catchProbability: 25,
-    predictionLevel: "Poor",
-    weatherFactors: {
-      windSpeed: 30,
-      waveHeight: 2.2,
-      rainProbability: 80,
-      cloudCover: 95,
-    },
-    historicalInfluence: {
-      lastTrips: 8,
-      trend: "Falling",
-    },
-    aiConfidence: "High",
-  },
-  {
-    id: "rg4",
-    name: "Sandy Shoals",
-    lat: 9.92,
-    lng: 80.05,
-    catchProbability: 72,
-    predictionLevel: "Good",
-    weatherFactors: {
-      windSpeed: 15,
-      waveHeight: 1.0,
-      rainProbability: 5,
-      cloudCover: 10,
-    },
-    historicalInfluence: {
-      lastTrips: 4,
-      trend: "Rising",
-    },
-    aiConfidence: "Medium",
-  },
-  {
-    id: "rg5",
-    name: "Old Wreckage",
-    lat: 9.55,
+    id: "galle-harbour-bank",
+    name: "Galle Harbour Bank",
+    lat: 6.02,
     lng: 80.25,
-    catchProbability: 55,
-    predictionLevel: "Moderate",
-    weatherFactors: {
-      windSpeed: 18,
-      waveHeight: 1.2,
-      rainProbability: 30,
-      cloudCover: 50,
-    },
-    historicalInfluence: {
-      lastTrips: 6,
-      trend: "Stable",
-    },
-    aiConfidence: "Low",
-  }
+  },
+  { id: "batticaloa-bank", name: "Batticaloa Bank", lat: 7.8, lng: 81.85 },
+  { id: "mirissa-point", name: "Mirissa Point", lat: 5.92, lng: 80.62 },
+  { id: "beruwala-grounds", name: "Beruwala Grounds", lat: 6.48, lng: 79.92 },
+  {
+    id: "mullaitivu-grounds",
+    name: "Mullaitivu Grounds",
+    lat: 9.28,
+    lng: 80.82,
+  },
 ];

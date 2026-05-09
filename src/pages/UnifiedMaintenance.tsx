@@ -54,6 +54,8 @@ import {
 } from "@/store/maintenanceRulesSlice";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/context/AuthContext";
+import AddVesselDialog from "@/components/AddVesselDialog";
+import { getFuelVessels } from "@/services/api";
 import {
   Ship,
   Plus,
@@ -81,6 +83,8 @@ import {
   Droplet,
   Cog,
   Fish,
+  Activity,
+  CalendarClock,
 } from "lucide-react";
 import AuthDebug from "@/components/AuthDebug";
 import { CountUp } from "@/components/ui/count-up";
@@ -112,8 +116,9 @@ export default function UnifiedMaintenance() {
   const [vesselForm, setVesselForm] = useState({
     name: "",
     type: "Multi-Day Vessel",
-    blueprintUrl: "",
   });
+  const [fuelVessels, setFuelVessels] = useState<any[]>([]);
+  const [selectedFuelVesselData, setSelectedFuelVesselData] = useState<any | null>(null);
 
   const [ruleDialogOpen, setRuleDialogOpen] = useState(false);
   const [editingRule, setEditingRule] = useState<MaintenanceRule | null>(null);
@@ -144,6 +149,48 @@ export default function UnifiedMaintenance() {
     trips_at_service: undefined as number | undefined,
   });
 
+  // Map CSV fuel vessels to the vessel shape the UI expects
+  const csvMappedVessels = useMemo(() => fuelVessels.map((fv) => ({
+    id: fv.vessel_id,
+    name: fv.vessel_id,
+    type: fv.vessel_type,
+    stats: {
+      lastTrip: "N/A",
+      engineHours: 0,
+      fuelOnBoard: `${(fv.fuel_consumption_per_day * 7).toFixed(0)} L (est. 7-day)`,
+      iceCapacity: "N/A",
+      nextServiceDue: "Not scheduled",
+    },
+    systems: [
+      {
+        id: "engine",
+        name: "Engine & Propulsion",
+        status: "operational",
+        description: `${fv.engine_type} — ${fv.hp} HP`,
+        blueprintImage: "/imul_blueprint_v2.png",
+        specs: {
+          "Engine Type": fv.engine_type,
+          "Horsepower": `${fv.hp} HP`,
+          "Daily Consumption": `${fv.fuel_consumption_per_day} L`,
+          "Daily Fuel Cost": `$${fv.fuel_cost_usd_per_day}`,
+        },
+        upcomingTasks: [],
+        lastService: { date: "N/A", technician: "N/A", notes: "Imported from vessel database" },
+      },
+    ],
+  })), [fuelVessels]);
+
+  // Determine if we are in guest mode
+  const isGuest = !user;
+  const effectiveVessels = isGuest ? csvMappedVessels : vessels;
+
+  // Set initial selected vessel for guest from CSV data
+  useEffect(() => {
+    if (isGuest && !selectedVesselId && csvMappedVessels.length > 0) {
+      setSelectedVesselId(csvMappedVessels[0].id);
+    }
+  }, [isGuest, selectedVesselId, csvMappedVessels]);
+
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [ruleToDelete, setRuleToDelete] = useState<MaintenanceRule | null>(
     null
@@ -153,18 +200,7 @@ export default function UnifiedMaintenance() {
     {}
   );
 
-  const getVesselBlueprint = (type: string) => {
-    switch (type) {
-      case "Multi-Day Vessel":
-        return "/imul_blueprint_v2.png";
-      case "Day Boat":
-        return "/iday_blueprint_v2.png";
-      case "Outboard Fiber":
-        return "/ofrp_blueprint_v2.png";
-      default:
-        return "/imul_blueprint_v2.png";
-    }
-  };
+
 
   const toggleExpand = (
     partKey: string,
@@ -185,19 +221,42 @@ export default function UnifiedMaintenance() {
     : [];
 
   useEffect(() => {
-    dispatch(fetchVessels());
-    dispatch(fetchRules(undefined));
-  }, [dispatch]);
+    if (!isGuest) {
+      dispatch(fetchVessels());
+      dispatch(fetchRules(undefined));
+    }
+  }, [dispatch, isGuest]);
+
+  // Load CSV vessel database on mount for specs auto-fill
+  useEffect(() => {
+    getFuelVessels()
+      .then((res) => setFuelVessels(res.vessels || []))
+      .catch(() => {});
+  }, []);
+
+  // Auto-match selected vessel to CSV data by name
+  useEffect(() => {
+    if (!selectedVesselId || !fuelVessels.length) {
+      setSelectedFuelVesselData(null);
+      return;
+    }
+    const vessel = effectiveVessels.find((v) => v.id === selectedVesselId) as any;
+    if (!vessel) { setSelectedFuelVesselData(null); return; }
+    const match = fuelVessels.find(
+      (fv) => fv.vessel_id === vessel.name || fv.vessel_id === vessel.vessel_id
+    );
+    setSelectedFuelVesselData(match || null);
+  }, [selectedVesselId, fuelVessels, effectiveVessels]);
 
   useEffect(() => {
-    if (selectedVesselId) {
+    if (selectedVesselId && !isGuest) {
       dispatch(fetchMaintenanceSummary(selectedVesselId));
       dispatch(fetchVesselState(selectedVesselId));
     }
-  }, [selectedVesselId, dispatch]);
+  }, [selectedVesselId, dispatch, isGuest]);
 
   useEffect(() => {
-    if (!selectedVesselId) return;
+    if (!selectedVesselId || isGuest) return;
     if (activeTab === "tracking") {
       dispatch(fetchRules(undefined));
       dispatch(fetchVesselState(selectedVesselId));
@@ -210,11 +269,44 @@ export default function UnifiedMaintenance() {
     if (activeTab === "overview") {
       dispatch(fetchVesselState(selectedVesselId));
     }
-  }, [activeTab, selectedVesselId, dispatch]);
+  }, [activeTab, selectedVesselId, dispatch, isGuest]);
 
-  const currentSummary = selectedVesselId ? summaries[selectedVesselId] : null;
-  const currentState = selectedVesselId ? vesselStates[selectedVesselId] : null;
-  const selectedVessel = vessels.find((v) => v.id === selectedVesselId);
+  // For guest (CSV vessels) derive a basic summary from the CSV specs
+  const guestSummaryForVessel = useMemo(() => {
+    if (!selectedVesselId) return null;
+    const csvV = fuelVessels.find((fv) => fv.vessel_id === selectedVesselId);
+    return {
+      maintenance_score: 100,
+      overall_status: "operational",
+      status: "good",
+      upcoming_maintenance: [],
+      overdue_maintenance: [],
+      systems: [
+        {
+          system_id: "engine",
+          system_name: "Engine & Propulsion",
+          status: "ok",
+          parts: [
+            { name: "Oil Filter", status: "ok", message: "Functioning optimally", current_value: 0, due_at_value: 250 },
+            { name: "Fuel Injectors", status: "ok", message: "No issues reported", current_value: 0, due_at_value: 500 },
+            ...(csvV ? [
+              { name: csvV.engine_type, status: "ok", message: `${csvV.hp} HP — ${csvV.fuel_consumption_per_day} L/day`, current_value: 0, due_at_value: 1000 },
+            ] : []),
+          ],
+        },
+      ],
+    } as any;
+  }, [selectedVesselId, fuelVessels]);
+
+  const currentSummary = selectedVesselId
+    ? isGuest ? guestSummaryForVessel : summaries[selectedVesselId]
+    : null;
+
+  const currentState = selectedVesselId
+    ? isGuest ? { maintenance_status: "good", engine_hours: 0, total_trips: 0, last_trip_date: "N/A" }
+    : vesselStates[selectedVesselId]
+    : null;
+  const selectedVessel = effectiveVessels.find((v) => v.id === selectedVesselId) as any;
 
 
 
@@ -238,8 +330,7 @@ export default function UnifiedMaintenance() {
               name: "Engine & Propulsion",
               status: "operational",
               description: "Main engine",
-              blueprintImage:
-                vesselForm.blueprintUrl || "/engine_blueprint.png",
+              blueprintImage: "/engine_blueprint.png",
               specs: { "Oil Level": "Good" },
               upcomingTasks: [],
               lastService: {
@@ -253,7 +344,7 @@ export default function UnifiedMaintenance() {
               name: "Nets & Gear",
               status: "operational",
               description: "Fishing gear",
-              blueprintImage: vesselForm.blueprintUrl || "/nets_blueprint.png",
+              blueprintImage: "/nets_blueprint.png",
               specs: { "Net Condition": "Good" },
               upcomingTasks: [],
               lastService: {
@@ -271,7 +362,7 @@ export default function UnifiedMaintenance() {
         description: `${vesselForm.name} added successfully`,
       });
       setVesselDialogOpen(false);
-      setVesselForm({ name: "", type: "Multi-Day Vessel", blueprintUrl: "" });
+      setVesselForm({ name: "", type: "Multi-Day Vessel" });
       dispatch(fetchVessels());
     } catch (err: any) {
       toast({
@@ -615,27 +706,8 @@ export default function UnifiedMaintenance() {
     );
   }
 
-  const showLoginPrompt = auth && !auth.loading && !auth.user;
-  if (showLoginPrompt) {
-    return (
-      <div className="flex items-center justify-center h-full min-h-[600px] p-6">
-        <Card className="max-w-lg w-full mx-auto text-center p-8">
-          <CardHeader>
-            <CardTitle>Please login to access Maintenance</CardTitle>
-            <CardDescription>
-              All vessels, rules and logs are private to your account. Sign in
-              to continue.
-            </CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              <Button onClick={() => navigate("/login")}>Go to Login</Button>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
+  // Removed blocking login prompt for guests
+
 
   return (
     <div className="relative min-h-screen w-full overflow-hidden bg-slate-50 dark:bg-slate-950 p-6">
@@ -700,107 +772,7 @@ export default function UnifiedMaintenance() {
           </div>
           
           <div className="flex flex-wrap items-center gap-3">
-            <Dialog open={vesselDialogOpen} onOpenChange={setVesselDialogOpen}>
-              <DialogTrigger asChild>
-                <Button className="bg-[#0284C5] hover:bg-[#026aa0] dark:bg-violet-600 dark:hover:bg-violet-700 text-white">
-                  <Plus className="mr-2 h-4 w-4" />
-                  Add Vessel
-                </Button>
-              </DialogTrigger>
-              <DialogContent>
-                <form onSubmit={handleCreateVessel}>
-                  <DialogHeader>
-                    <DialogTitle>Create New Vessel</DialogTitle>
-                    <DialogDescription>
-                      Add a new fishing vessel to your fleet
-                    </DialogDescription>
-                  </DialogHeader>
-                  <div className="grid gap-4 py-4">
-                    <div className="grid gap-2">
-                      <Label htmlFor="vessel-name">Vessel Name *</Label>
-                      <Input
-                        id="vessel-name"
-                        placeholder="e.g., IMUL-001"
-                        value={vesselForm.name}
-                        onChange={(e) =>
-                          setVesselForm({ ...vesselForm, name: e.target.value })
-                        }
-                        required
-                      />
-                    </div>
-                    <div className="grid gap-2">
-                      <Label htmlFor="vessel-type">Type</Label>
-                      <Select
-                        value={vesselForm.type}
-                        onValueChange={(v) =>
-                          setVesselForm({ ...vesselForm, type: v })
-                        }
-                      >
-                        <SelectTrigger>
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="Multi-Day Vessel">
-                            Multi-Day Vessel
-                          </SelectItem>
-                          <SelectItem value="Single-Day Vessel">
-                            Single-Day Vessel
-                          </SelectItem>
-                          <SelectItem value="Offshore Vessel">
-                            Offshore Vessel
-                          </SelectItem>
-                        </SelectContent>
-                      </Select>
-                    </div>
-                    <div className="grid gap-2">
-                      <Label htmlFor="blueprint">
-                        Blueprint Image URL (optional)
-                      </Label>
-                      <div className="text-xs text-muted-foreground mb-2">
-                        Upload blueprint to public/ folder, then enter:
-                        /your-blueprint.png
-                      </div>
-                      <Input
-                        id="blueprint"
-                        placeholder="/vessel_blueprint.png"
-                        value={vesselForm.blueprintUrl}
-                        onChange={(e) =>
-                          setVesselForm({
-                            ...vesselForm,
-                            blueprintUrl: e.target.value,
-                          })
-                        }
-                      />
-                      {vesselForm.blueprintUrl && (
-                        <div className="mt-2 p-2 border rounded">
-                          <img
-                            src={vesselForm.blueprintUrl}
-                            alt="Blueprint preview"
-                            className="w-full h-32 object-contain"
-                            onError={(e) => {
-                              e.currentTarget.src = "";
-                              e.currentTarget.alt = "Preview not available";
-                            }}
-                          />
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                  <DialogFooter>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      onClick={() => setVesselDialogOpen(false)}
-                    >
-                      Cancel
-                    </Button>
-                    <Button type="submit" disabled={!vesselForm.name}>
-                      Create Vessel
-                    </Button>
-                  </DialogFooter>
-                </form>
-              </DialogContent>
-            </Dialog>
+            <AddVesselDialog onVesselAdded={() => dispatch(fetchVessels())} />
 
             <Dialog open={ruleDialogOpen} onOpenChange={setRuleDialogOpen}>
               <DialogTrigger asChild>
@@ -932,7 +904,7 @@ export default function UnifiedMaintenance() {
               </DialogContent>
             </Dialog>
 
-            {vessels.length > 0 && (
+            {effectiveVessels.length > 0 && (
               <div className="w-72">
                 <Select
                   value={selectedVesselId || ""}
@@ -942,7 +914,7 @@ export default function UnifiedMaintenance() {
                     <SelectValue placeholder="Select a vessel to manage" />
                   </SelectTrigger>
                   <SelectContent>
-                    {vessels.map((v) => (
+                    {effectiveVessels.map((v) => (
                       <SelectItem key={v.id} value={v.id}>
                         <Ship className="inline mr-2 h-4 w-4 text-[#0284C5] dark:text-violet-500" />
                         {v.name} - {v.type}
@@ -956,7 +928,7 @@ export default function UnifiedMaintenance() {
         </div>
 
         {/* Empty State / Hero Section */}
-        {!selectedVesselId && vessels.length > 0 && (
+        {!selectedVesselId && effectiveVessels.length > 0 && (
           <div className="flex-1 flex flex-col items-center justify-center -mt-20">
             <div className="text-center space-y-6 max-w-2xl mx-auto p-12 rounded-3xl bg-white/40 dark:bg-slate-900/40 backdrop-blur-md border border-white/50 dark:border-slate-700/50 shadow-xl">
               <div className="h-24 w-24 rounded-full bg-gradient-to-br from-[#0284C5]/20 to-cyan-500/20 dark:from-violet-500/20 dark:to-indigo-500/20 flex items-center justify-center mx-auto mb-6 ring-1 ring-white/50 dark:ring-white/10">
@@ -990,7 +962,7 @@ export default function UnifiedMaintenance() {
         )}
 
         {/* No Vessels State */}
-        {vessels.length === 0 && (
+        {effectiveVessels.length === 0 && (
           <div className="flex-1 flex flex-col items-center justify-center">
             <Card className="p-12 text-center border-dashed border-2 border-slate-200 dark:border-violet-900/50 bg-white/40 dark:bg-violet-950/10 backdrop-blur-sm max-w-lg w-full">
               <div className="h-20 w-20 rounded-full bg-slate-100 dark:bg-slate-800/50 flex items-center justify-center mx-auto mb-6">
@@ -1002,27 +974,143 @@ export default function UnifiedMaintenance() {
               <p className="text-muted-foreground mb-8">
                 Create your first vessel to start tracking maintenance
               </p>
-              <Button
-                onClick={() => {
-                  if (!user) {
-                    toast({
-                      title: "Login required",
-                      description: "Please login to create a vessel",
-                      variant: "destructive",
-                    });
-                    return;
-                  }
-                  setVesselDialogOpen(true);
-                }}
-                size="lg"
-                className="bg-[#0284C5] hover:bg-[#026aa0] dark:bg-violet-600 dark:hover:bg-violet-700 text-white w-full"
-              >
-                <Plus className="mr-2 h-5 w-5" />
-                Create First Vessel
-              </Button>
+              <AddVesselDialog onVesselAdded={() => dispatch(fetchVessels())} />
             </Card>
           </div>
         )}
+
+      {selectedVesselId && (
+        <div className="mb-8 p-6 rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-sm relative overflow-hidden group">
+          <div className="absolute top-0 right-0 p-8 opacity-5 dark:opacity-10 pointer-events-none group-hover:scale-110 transition-transform duration-700">
+             <Ship className="h-64 w-64 text-slate-900 dark:text-white" />
+          </div>
+          
+          <div className="relative z-10 flex flex-col md:flex-row md:items-center justify-between gap-8">
+            <div className="space-y-4">
+              <div className="space-y-1">
+                <div className="flex items-center gap-3">
+                  <Badge variant="outline" className="bg-sky-50 text-sky-700 border-sky-200 dark:bg-sky-900/30 dark:text-sky-400 dark:border-sky-800">
+                    {selectedVessel?.type}
+                  </Badge>
+                  <span className="text-sm text-slate-500 dark:text-slate-400 font-mono">ID: {selectedVessel?.id.split('-').pop()?.toUpperCase()}</span>
+                </div>
+                <h2 className="text-4xl font-extrabold text-slate-900 dark:text-white tracking-tight">
+                  {selectedVessel?.name}
+                </h2>
+              </div>
+              
+              <div className="flex gap-6">
+                 <div className="flex items-center gap-2">
+                    <div className="bg-emerald-100 dark:bg-emerald-900/30 p-2 rounded-lg">
+                      <CalendarClock className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
+                    </div>
+                    <div>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 font-medium uppercase">Next Service</p>
+                      <p className="text-lg font-bold text-slate-900 dark:text-white">{selectedVessel?.stats?.nextServiceDue || "N/A"}</p>
+                    </div>
+                 </div>
+                 <div className="flex items-center gap-2">
+                    <div className="bg-blue-100 dark:bg-blue-900/30 p-2 rounded-lg">
+                      <Cpu className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+                    </div>
+                    <div>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 font-medium uppercase">Systems</p>
+                      <p className="text-lg font-bold text-slate-900 dark:text-white">{selectedVessel?.systems?.length || 0} Active</p>
+                    </div>
+                 </div>
+              </div>
+
+              {/* CSV vessel specs (auto-fetched from vessels.csv) */}
+              {selectedFuelVesselData && (
+                <div className="flex flex-wrap gap-5 pt-3 mt-1 border-t border-slate-100 dark:border-slate-800">
+                  <div className="flex items-center gap-2">
+                    <div className="bg-violet-100 dark:bg-violet-900/30 p-2 rounded-lg">
+                      <Cog className="h-4 w-4 text-violet-600 dark:text-violet-400" />
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-slate-400 uppercase font-medium">Engine Type</p>
+                      <p className="text-sm font-bold text-slate-900 dark:text-white">{selectedFuelVesselData.engine_type}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="bg-amber-100 dark:bg-amber-900/30 p-2 rounded-lg">
+                      <Gauge className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-slate-400 uppercase font-medium">Horsepower</p>
+                      <p className="text-sm font-bold text-slate-900 dark:text-white">{selectedFuelVesselData.hp} HP</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="bg-sky-100 dark:bg-sky-900/30 p-2 rounded-lg">
+                      <Droplet className="h-4 w-4 text-sky-600 dark:text-sky-400" />
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-slate-400 uppercase font-medium">Fuel Consumption</p>
+                      <p className="text-sm font-bold text-slate-900 dark:text-white">{selectedFuelVesselData.fuel_consumption_per_day} L/day</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="bg-green-100 dark:bg-green-900/30 p-2 rounded-lg">
+                      <DollarSign className="h-4 w-4 text-green-600 dark:text-green-400" />
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-slate-400 uppercase font-medium">Daily Fuel Cost</p>
+                      <p className="text-sm font-bold text-slate-900 dark:text-white">${selectedFuelVesselData.fuel_cost_usd_per_day}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <div className="bg-rose-100 dark:bg-rose-900/30 p-2 rounded-lg">
+                      <Fish className="h-4 w-4 text-rose-600 dark:text-rose-400" />
+                    </div>
+                    <div>
+                      <p className="text-[10px] text-slate-400 uppercase font-medium">Vessel Type</p>
+                      <p className="text-sm font-bold text-slate-900 dark:text-white">{selectedFuelVesselData.vessel_type}</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center gap-8 bg-slate-50 dark:bg-slate-950/50 p-6 rounded-2xl border border-slate-100 dark:border-slate-800">
+               <div className="text-right">
+                  <p className="text-sm font-semibold text-slate-500 dark:text-slate-400 mb-1">Fleet Rradiness</p>
+                  <div className="flex items-baseline justify-end gap-2">
+                    <span className="text-5xl font-black text-slate-900 dark:text-white tracking-tighter">
+                      {currentSummary?.maintenance_score || 0}%
+                    </span>
+                    <span className={`text-sm font-bold px-2 py-0.5 rounded-full ${
+                      currentSummary?.maintenance_score >= 90 ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400' :
+                      currentSummary?.maintenance_score >= 70 ? 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400' :
+                      'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400'
+                    }`}>
+                      {currentSummary?.maintenance_score >= 90 ? 'EXCELLENT' : 
+                       currentSummary?.maintenance_score >= 70 ? 'GOOD' : 'CRITICAL'}
+                    </span>
+                  </div>
+               </div>
+               
+               <div className="h-24 w-24 relative flex items-center justify-center">
+                  <svg className="h-full w-full rotate-[-90deg]" viewBox="0 0 100 100">
+                    <circle cx="50" cy="50" r="40" fill="transparent" stroke="currentColor" strokeWidth="8" className="text-slate-200 dark:text-slate-800" />
+                    <circle cx="50" cy="50" r="40" fill="transparent" stroke="currentColor" strokeWidth="8" 
+                      className={`${
+                        currentSummary?.maintenance_score >= 90 ? 'text-emerald-500' :
+                        currentSummary?.maintenance_score >= 70 ? 'text-amber-500' : 'text-red-500'
+                      }`}
+                      strokeDasharray={`${(currentSummary?.maintenance_score || 0) * 2.51} 251.2`}
+                      strokeLinecap="round"
+                    />
+                  </svg>
+                  <Activity className={`absolute h-8 w-8 ${
+                        currentSummary?.maintenance_score >= 90 ? 'text-emerald-500' :
+                        currentSummary?.maintenance_score >= 70 ? 'text-amber-500' : 'text-red-500'
+                  }`} />
+               </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {selectedVesselId && (
         <Tabs
@@ -1030,77 +1118,68 @@ export default function UnifiedMaintenance() {
           onValueChange={setActiveTab}
           className="space-y-6"
         >
-          <TabsList className="grid w-full grid-cols-4 bg-slate-100 dark:bg-violet-950/30 p-1 rounded-lg border border-[#0284C5]/30 dark:border-violet-800">
+          <TabsList className="grid w-full grid-cols-3 bg-slate-100 dark:bg-slate-900/50 p-1 rounded-xl border border-slate-200 dark:border-slate-800 shadow-sm max-w-2xl mx-auto">
             <TabsTrigger
               value="overview"
-              className="data-[state=active]:bg-[#0284C5] dark:data-[state=active]:bg-violet-600 data-[state=active]:text-white data-[state=active]:shadow-md transition-all duration-200 rounded-md"
+              className="data-[state=active]:bg-white dark:data-[state=active]:bg-slate-800 data-[state=active]:text-sky-600 dark:data-[state=active]:text-sky-400 data-[state=active]:shadow-md transition-all duration-200 rounded-lg font-medium"
             >
               Overview
             </TabsTrigger>
             <TabsTrigger
               value="tracking"
-              className="data-[state=active]:bg-[#0284C5] dark:data-[state=active]:bg-violet-600 data-[state=active]:text-white data-[state=active]:shadow-md transition-all duration-200 rounded-md"
+              className="data-[state=active]:bg-white dark:data-[state=active]:bg-slate-800 data-[state=active]:text-sky-600 dark:data-[state=active]:text-sky-400 data-[state=active]:shadow-md transition-all duration-200 rounded-lg font-medium"
             >
               Status Tracking
             </TabsTrigger>
             <TabsTrigger
               value="rules"
-              className="data-[state=active]:bg-[#0284C5] dark:data-[state=active]:bg-violet-600 data-[state=active]:text-white data-[state=active]:shadow-md transition-all duration-200 rounded-md"
+              className="data-[state=active]:bg-white dark:data-[state=active]:bg-slate-800 data-[state=active]:text-sky-600 dark:data-[state=active]:text-sky-400 data-[state=active]:shadow-md transition-all duration-200 rounded-lg font-medium"
             >
               Maintenance Rules
-            </TabsTrigger>
-            <TabsTrigger
-              value="blueprint"
-              className="data-[state=active]:bg-[#0284C5] dark:data-[state=active]:bg-violet-600 data-[state=active]:text-white data-[state=active]:shadow-md transition-all duration-200 rounded-md"
-            >
-              Blueprint
             </TabsTrigger>
           </TabsList>
 
           <TabsContent value="overview" className="space-y-4">
             <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-              <Card className="relative overflow-hidden border-0 shadow-lg bg-white/40 dark:bg-slate-900/40 backdrop-blur-md ring-1 ring-slate-200/50 dark:ring-white/10 group">
-                <div className="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-[#0284C5] to-cyan-400 dark:from-violet-500 dark:to-purple-400 opacity-80" />
+              <Card className="relative overflow-hidden border border-slate-200 dark:border-slate-800 shadow-sm bg-white dark:bg-slate-900 group hover:shadow-md transition-all">
                 <CardContent className="p-6 flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                    <p className="text-sm font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                       Engine Hours
                     </p>
-                    <div className="text-4xl font-bold text-slate-800 dark:text-white mt-2 group-hover:scale-105 transition-transform origin-left duration-300">
-                      <CountUp end={currentState?.engine_hours || 0} suffix="h" />
+                    <div className="text-4xl font-extrabold text-slate-900 dark:text-white mt-2 tracking-tight">
+                      <CountUp end={currentState?.engine_hours || 0} suffix=" h" />
                     </div>
                   </div>
-                  <div className="h-14 w-14 rounded-full bg-[#0284C5]/10 dark:bg-violet-500/10 flex items-center justify-center ring-1 ring-[#0284C5]/20 dark:ring-violet-500/20 group-hover:ring-[#0284C5]/50 dark:group-hover:ring-violet-500/50 transition-all duration-300">
-                    <Gauge className="h-7 w-7 text-[#0284C5] dark:text-violet-400" />
+                  <div className="h-12 w-12 rounded-xl bg-sky-100 dark:bg-sky-900/30 flex items-center justify-center text-sky-600 dark:text-sky-400">
+                    <Gauge className="h-6 w-6" />
                   </div>
                 </CardContent>
               </Card>
 
-              <Card className="relative overflow-hidden border-0 shadow-lg bg-white/40 dark:bg-slate-900/40 backdrop-blur-md ring-1 ring-slate-200/50 dark:ring-white/10 group">
-                <div className="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-[#0284C5] to-cyan-400 dark:from-violet-500 dark:to-purple-400 opacity-80" />
+              <Card className="relative overflow-hidden border border-slate-200 dark:border-slate-800 shadow-sm bg-white dark:bg-slate-900 group hover:shadow-md transition-all">
                 <CardContent className="p-6 flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                    <p className="text-sm font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                       Total Trips
                     </p>
-                    <div className="text-4xl font-bold text-slate-800 dark:text-white mt-2 group-hover:scale-105 transition-transform origin-left duration-300">
+                    <div className="text-4xl font-extrabold text-slate-900 dark:text-white mt-2 tracking-tight">
                       <CountUp end={currentState?.total_trips || 0} />
                     </div>
                   </div>
-                  <div className="h-14 w-14 rounded-full bg-[#0284C5]/10 dark:bg-violet-500/10 flex items-center justify-center ring-1 ring-[#0284C5]/20 dark:ring-violet-500/20 group-hover:ring-[#0284C5]/50 dark:group-hover:ring-violet-500/50 transition-all duration-300">
-                    <Anchor className="h-7 w-7 text-[#0284C5] dark:text-violet-400" />
+                  <div className="h-12 w-12 rounded-xl bg-indigo-100 dark:bg-indigo-900/30 flex items-center justify-center text-indigo-600 dark:text-indigo-400">
+                    <Anchor className="h-6 w-6" />
                   </div>
                 </CardContent>
               </Card>
 
-              <Card className="relative overflow-hidden border-0 shadow-lg bg-white/40 dark:bg-slate-900/40 backdrop-blur-md ring-1 ring-slate-200/50 dark:ring-white/10 group">
-                <div className="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-[#0284C5] to-cyan-400 dark:from-violet-500 dark:to-purple-400 opacity-80" />
+              <Card className="relative overflow-hidden border border-slate-200 dark:border-slate-800 shadow-sm bg-white dark:bg-slate-900 group hover:shadow-md transition-all">
                 <CardContent className="p-6 flex items-center justify-between">
                   <div>
-                    <p className="text-sm font-medium text-slate-500 dark:text-slate-400 uppercase tracking-wider">
+                    <p className="text-sm font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">
                       Last Trip
                     </p>
-                    <div className="text-3xl font-bold text-slate-800 dark:text-white mt-3 group-hover:scale-105 transition-transform origin-left duration-300 animate-in fade-in slide-in-from-bottom-2 duration-1000">
+                    <div className="text-3xl font-bold text-slate-900 dark:text-white mt-3 tracking-tight">
                       {currentState?.last_trip_date
                         ? new Date(currentState.last_trip_date).toLocaleDateString(undefined, {
                             month: "short",
@@ -1108,14 +1187,14 @@ export default function UnifiedMaintenance() {
                           })
                         : "N/A"}
                       {currentState?.last_trip_date && (
-                        <span className="text-sm font-normal text-slate-400 ml-2">
+                        <span className="text-lg font-medium text-slate-400 ml-2">
                           {new Date(currentState.last_trip_date).getFullYear()}
                         </span>
                       )}
                     </div>
                   </div>
-                  <div className="h-14 w-14 rounded-full bg-[#0284C5]/10 dark:bg-violet-500/10 flex items-center justify-center ring-1 ring-[#0284C5]/20 dark:ring-violet-500/20 group-hover:ring-[#0284C5]/50 dark:group-hover:ring-violet-500/50 transition-all duration-300">
-                    <CalendarDays className="h-7 w-7 text-[#0284C5] dark:text-violet-400" />
+                  <div className="h-12 w-12 rounded-xl bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center text-emerald-600 dark:text-emerald-400">
+                    <CalendarDays className="h-6 w-6" />
                   </div>
                 </CardContent>
               </Card>
@@ -1643,255 +1722,7 @@ export default function UnifiedMaintenance() {
             )}
           </TabsContent>
 
-          <TabsContent value="blueprint">
-            {!selectedVessel ? (
-              <div className="text-center py-12 text-muted-foreground">
-                <Ship className="mx-auto h-16 w-16 mb-4" />
-                <p>Select a vessel to view system blueprints</p>
-              </div>
-            ) : (
-              <div className="flex gap-6 min-h-[600px]">
-                <div className="w-64 bg-white dark:bg-slate-950 rounded-xl border border-slate-200 dark:border-violet-900/50 p-4 flex flex-col gap-2 shadow-sm">
-                  <div className="font-bold text-lg mb-4 text-center text-slate-900 dark:text-violet-100 flex items-center justify-center gap-2">
-                    <Cog className="h-5 w-5 text-[#0284C5] dark:text-violet-500" />
-                    Systems
-                  </div>
-                  {selectedVessel.systems?.map((system) => (
-                    <Button
-                      key={system.id}
-                      variant={
-                        activeSystemId === system.id ? "default" : "ghost"
-                      }
-                      className={`justify-start text-left h-auto py-3 px-4 transition-all ${
-                        activeSystemId === system.id
-                          ? "bg-[#0284C5] hover:bg-[#026aa0] dark:bg-violet-600 dark:hover:bg-violet-700 text-white shadow-md"
-                          : "hover:bg-slate-100 dark:hover:bg-violet-900/20 text-slate-600 dark:text-slate-400"
-                      }`}
-                      onClick={() => setActiveSystemId(system.id)}
-                    >
-                      <div className="flex items-center gap-3">
-                        {(() => {
-                          const iconMap: Record<string, any> = {
-                            "Main Engine": Cog,
-                            "Electrical System": Zap,
-                            "Safety Equipment": LifeBuoy,
-                            "Navigation Systems": Compass,
-                            "Fishing Gear": Fish,
-                            "Electronics": Cpu,
-                            "Hydraulic System": Droplet,
-                          };
-                          const IconComponent =
-                            iconMap[system.name] || Wrench;
-                          return (
-                            <IconComponent
-                              className={`h-4 w-4 ${
-                                activeSystemId === system.id
-                                  ? "text-white"
-                                  : "text-slate-400 dark:text-slate-500"
-                              }`}
-                            />
-                          );
-                        })()}
-                        <span className="font-medium">{system.name}</span>
-                      </div>
-                    </Button>
-                  ))}
-                </div>
 
-                <div className="flex-1 flex items-center justify-center relative">
-                  {!activeSystemId ? (
-                    <div className="flex flex-col items-center w-full h-full">
-                      <div className="font-bold text-xl mb-4 text-slate-900 dark:text-violet-100 flex items-center gap-2">
-                        <Ship className="h-6 w-6 text-[#0284C5] dark:text-violet-500" />
-                        {selectedVessel.name} - {selectedVessel.type}
-                      </div>
-                      <div className="bg-[#001a33] dark:bg-[#0a0a1a] rounded-xl overflow-hidden relative shadow-2xl border border-[#003366] dark:border-violet-900/50 w-full flex-1 flex items-center justify-center group">
-                        {/* Technical Grid Background */}
-                        <div
-                          className="absolute inset-0 opacity-20 pointer-events-none"
-                          style={{
-                            backgroundImage:
-                              "linear-gradient(rgba(255, 255, 255, 0.1) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 255, 255, 0.1) 1px, transparent 1px)",
-                            backgroundSize: "40px 40px",
-                          }}
-                        />
-                        <div
-                          className="absolute inset-0 opacity-10 pointer-events-none"
-                          style={{
-                            backgroundImage:
-                              "linear-gradient(rgba(255, 255, 255, 0.1) 0.5px, transparent 0.5px), linear-gradient(90deg, rgba(255, 255, 255, 0.1) 0.5px, transparent 0.5px)",
-                            backgroundSize: "10px 10px",
-                          }}
-                        />
-
-                        {/* Corner Accents */}
-                        <div className="absolute top-4 left-4 w-8 h-8 border-t-2 border-l-2 border-[#0284C5] dark:border-violet-500 opacity-50" />
-                        <div className="absolute top-4 right-4 w-8 h-8 border-t-2 border-r-2 border-[#0284C5] dark:border-violet-500 opacity-50" />
-                        <div className="absolute bottom-4 left-4 w-8 h-8 border-b-2 border-l-2 border-[#0284C5] dark:border-violet-500 opacity-50" />
-                        <div className="absolute bottom-4 right-4 w-8 h-8 border-b-2 border-r-2 border-[#0284C5] dark:border-violet-500 opacity-50" />
-
-                        <img
-                          src={getVesselBlueprint(selectedVessel.type)}
-                          alt={`${selectedVessel.name} Blueprint`}
-                          className="max-w-[90%] max-h-[500px] object-contain transition-all duration-700 drop-shadow-[0_0_30px_rgba(2,132,197,0.2)] group-hover:scale-105"
-                          onError={(e) => {
-                            e.currentTarget.src = "/imul_blueprint_v2.png";
-                          }}
-                        />
-
-                        {/* Technical Specs Overlay */}
-                        <div className="absolute top-6 right-6 bg-black/40 backdrop-blur-md border border-white/10 p-4 rounded-lg text-xs text-white/80 font-mono space-y-2">
-                          <div className="flex justify-between gap-8">
-                            <span>LOA:</span>
-                            <span className="text-white">
-                              {selectedVessel.type === "Multi-Day Vessel"
-                                ? "14.5m"
-                                : selectedVessel.type === "Day Boat"
-                                ? "8.2m"
-                                : "5.8m"}
-                            </span>
-                          </div>
-                          <div className="flex justify-between gap-8">
-                            <span>Beam:</span>
-                            <span className="text-white">
-                              {selectedVessel.type === "Multi-Day Vessel"
-                                ? "4.2m"
-                                : selectedVessel.type === "Day Boat"
-                                ? "2.8m"
-                                : "1.9m"}
-                            </span>
-                          </div>
-                          <div className="flex justify-between gap-8">
-                            <span>Draft:</span>
-                            <span className="text-white">
-                              {selectedVessel.type === "Multi-Day Vessel"
-                                ? "1.8m"
-                                : selectedVessel.type === "Day Boat"
-                                ? "0.9m"
-                                : "0.4m"}
-                            </span>
-                          </div>
-                        </div>
-
-                        <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-10">
-                          <Card className="bg-black/40 backdrop-blur-md border-white/10 shadow-lg">
-                            <CardContent className="p-3">
-                              <div className="flex gap-6 text-xs text-white/90 font-medium">
-                                <div className="flex items-center gap-2">
-                                  <div className="w-2 h-2 bg-green-500 rounded-full shadow-[0_0_8px_rgba(34,197,94,0.6)]" />
-                                  <span>Operational</span>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                  <div className="w-2 h-2 bg-yellow-500 rounded-full shadow-[0_0_8px_rgba(234,179,8,0.6)]" />
-                                  <span>Due Soon</span>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                  <div className="w-2 h-2 bg-red-500 rounded-full shadow-[0_0_8px_rgba(239,68,68,0.6)]" />
-                                  <span>Overdue</span>
-                                </div>
-                              </div>
-                            </CardContent>
-                          </Card>
-                        </div>
-                      </div>
-                      <div className="mt-4 text-muted-foreground text-sm">
-                        Click a system on the left to zoom in
-                      </div>
-                    </div>
-                  ) : (
-                    (() => {
-                      const system = selectedVessel.systems?.find(
-                        (s) => s.id === activeSystemId
-                      );
-                      if (!system) return null;
-                      return (
-                        <div className="w-full flex flex-col items-center">
-                          <div className="flex items-center gap-2 mb-2">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => setActiveSystemId(null)}
-                            >
-                              Back
-                            </Button>
-                            <span className="font-bold text-lg">
-                              {system.name}
-                            </span>
-                            <Badge
-                              variant={
-                                system.status === "operational"
-                                  ? "default"
-                                  : system.status === "due-soon"
-                                  ? "secondary"
-                                  : "destructive"
-                              }
-                            >
-                              {system.status}
-                            </Badge>
-                          </div>
-                          <div className="bg-[#003366] rounded-xl overflow-hidden relative shadow-inner border border-[#004488] min-h-[600px] w-full flex items-center justify-center">
-                            <div
-                              className="absolute inset-0 opacity-30 pointer-events-none"
-                              style={{
-                                backgroundImage:
-                                  "linear-gradient(rgba(255, 255, 255, 0.15) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 255, 255, 0.15) 1px, transparent 1px)",
-                                backgroundSize: "40px 40px",
-                              }}
-                            />
-                            <img
-                              src={system.blueprintImage}
-                              alt={`${system.name} Detailed Blueprint`}
-                              className="max-w-full max-h-[700px] object-contain transition-all duration-500 drop-shadow-[0_0_20px_rgba(255,255,255,0.3)] scale-110"
-                              onError={(e) => {
-                                e.currentTarget.src = getVesselBlueprint(
-                                  selectedVessel.type
-                                );
-                              }}
-                            />
-                            {system.subParts?.map((sub) => (
-                              <div
-                                key={sub.id}
-                                className="absolute w-6 h-6 -ml-3 -mt-3 rounded-full bg-white border-2 border-blue-500 shadow-[0_0_10px_white] animate-pulse"
-                                style={{ left: `${sub.x}%`, top: `${sub.y}%` }}
-                                title={sub.label}
-                              />
-                            ))}
-                            <div className="absolute bottom-4 left-4 right-4 z-10">
-                              <Card className="bg-black/30 backdrop-blur-md border-white/20">
-                                <CardContent className="p-3">
-                                  <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs text-white/70">
-                                    <div className="flex items-center gap-2">
-                                      <div className="w-3 h-3 bg-green-500 rounded-full" />
-                                      <span>Operational</span>
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                      <div className="w-3 h-3 bg-yellow-500 rounded-full" />
-                                      <span>Due Soon</span>
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                      <div className="w-3 h-3 bg-red-500 rounded-full" />
-                                      <span>Overdue</span>
-                                    </div>
-                                    <div className="flex items-center gap-2">
-                                      <div className="w-2 h-2 bg-white rounded-full border-2 border-blue-500 shadow-[0_0_10px_white]" />
-                                      <span>System Components</span>
-                                    </div>
-                                  </div>
-                                </CardContent>
-                              </Card>
-                            </div>
-                          </div>
-                          <div className="mt-4 text-muted-foreground text-sm text-center max-w-2xl">
-                            {system.description}
-                          </div>
-                        </div>
-                      );
-                    })()
-                  )}
-                </div>
-              </div>
-            )}
-          </TabsContent>
         </Tabs>
       )}
 

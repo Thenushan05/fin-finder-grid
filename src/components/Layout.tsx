@@ -2,12 +2,14 @@ import { ReactNode } from "react";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/AppSidebar";
 import { ThemeToggle } from "@/components/ThemeToggle";
-import { Waves, Fish, Map, User, LayoutDashboard, Wrench, TrendingUp } from "lucide-react";
+import { Chatbot } from "@/components/Chatbot";
+import { Waves, Fish, Map, User, LayoutDashboard, Wrench, TrendingUp, Bell } from "lucide-react";
 import { useLocation, useNavigate, Link } from "react-router-dom";
 import { useSelector, useDispatch } from "react-redux";
 import { RootState } from "@/store";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { cn } from "@/lib/utils";
+import { Button } from "@/components/ui/button";
 
 export function Layout({ children }: { children: ReactNode }) {
   const location = useLocation();
@@ -74,6 +76,11 @@ export function Layout({ children }: { children: ReactNode }) {
               </div>
             </div>
             
+            <Button variant="ghost" size="icon" className="relative text-muted-foreground hover:text-foreground">
+              <Bell className="h-5 w-5" />
+              <span className="absolute top-2 right-2 h-2 w-2 bg-red-500 rounded-full border-2 border-card" />
+            </Button>
+
             <Link 
               to="/profile"
               className="cursor-pointer hover:opacity-80 transition-opacity"
@@ -94,6 +101,7 @@ export function Layout({ children }: { children: ReactNode }) {
           </main>
         </div>
       </div>
+      <Chatbot />
     </SidebarProvider>
   );
 }

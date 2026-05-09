@@ -1,12 +1,12 @@
 import axios from "axios";
 import tokenService from "./tokenService";
 
-// Base URL: use Vite env if provided, otherwise default to localhost:8001
+// Base URL: use Vite env if provided, otherwise default to localhost:8000
 const BASE = (import.meta as any).env?.VITE_API_BASE || "http://localhost:8000";
 
 const api = axios.create({
   baseURL: BASE,
-  timeout: 300_000, // 5 minutes for Copernicus data fetching
+  timeout: 600_000, // 10 minutes for Copernicus data fetching
 });
 // Allow cross-site cookies (httpOnly set by backend)
 api.defaults.withCredentials = true;
@@ -48,7 +48,7 @@ export async function postRegionPrediction(body: any) {
   if (payload && payload.bbox) {
     // Region-based prediction with bbox (longer timeout for Copernicus API)
     const res = await api.post("/api/v1/hotspots/predict-region", payload, {
-      timeout: 300_000, // 5 minutes
+      timeout: 600_000, // 10 minutes
     });
     return res.data;
   }
@@ -83,7 +83,7 @@ export async function authLogin(email: string, password: string) {
 export async function authRegister(
   name: string | null,
   email: string,
-  password: string
+  password: string,
 ) {
   // include full name as `name` to be available server-side if desired
   const res = await api.post("/api/v1/auth/register", {
@@ -138,11 +138,11 @@ export async function deleteVessel(vesselId: string) {
 export async function updateSystemStatus(
   vesselId: string,
   systemId: string,
-  status: string
+  status: string,
 ) {
   const res = await api.patch(
     `/api/v1/maintenance/vessels/${vesselId}/systems/${systemId}/status`,
-    { status }
+    { status },
   );
   return res.data;
 }
@@ -152,11 +152,11 @@ export async function createMaintenanceTask(
   systemId: string,
   task: string,
   due: string,
-  priority: string
+  priority: string,
 ) {
   const res = await api.post(
     `/api/v1/maintenance/vessels/${vesselId}/systems/${systemId}/tasks`,
-    { systemId, task, due, priority }
+    { systemId, task, due, priority },
   );
   return res.data;
 }
@@ -165,11 +165,11 @@ export async function updateMaintenanceTask(
   vesselId: string,
   systemId: string,
   taskId: string,
-  updates: any
+  updates: any,
 ) {
   const res = await api.patch(
     `/api/v1/maintenance/vessels/${vesselId}/systems/${systemId}/tasks/${taskId}`,
-    updates
+    updates,
   );
   return res.data;
 }
@@ -177,10 +177,10 @@ export async function updateMaintenanceTask(
 export async function deleteMaintenanceTask(
   vesselId: string,
   systemId: string,
-  taskId: string
+  taskId: string,
 ) {
   const res = await api.delete(
-    `/api/v1/maintenance/vessels/${vesselId}/systems/${systemId}/tasks/${taskId}`
+    `/api/v1/maintenance/vessels/${vesselId}/systems/${systemId}/tasks/${taskId}`,
   );
   return res.data;
 }
@@ -191,17 +191,17 @@ export async function createServiceLog(
   date: string,
   technician: string,
   notes: string,
-  cost?: string
+  cost?: string,
 ) {
   const res = await api.post(
     `/api/v1/maintenance/vessels/${vesselId}/systems/${systemId}/service-logs`,
-    { systemId, date, technician, notes, cost }
+    { systemId, date, technician, notes, cost },
   );
   return res.data;
 }
 
 export async function getHotspotsToday(
-  params: { species?: string; threshold?: number; top_k?: number } = {}
+  params: { species?: string; threshold?: number; top_k?: number } = {},
 ) {
   const q: any = {};
   if (params.species) q.species = params.species;
@@ -287,6 +287,142 @@ export async function calculateMultipleStopsFuel({
       estimated_trip_duration_hours: totalDuration,
     },
   };
+}
+
+// --- Local-ground spot predictor ---
+export async function predictLocalGround(
+  lat: number,
+  lng: number,
+  name?: string,
+  total_kg_latest: number = 0,
+  departure_port?: string,
+) {
+  const res = await api.post("/api/v1/localground/predict", {
+    lat,
+    lng,
+    name,
+    total_kg_latest,
+    departure_port,
+  });
+  return res.data as {
+    name: string | null;
+    lat: number;
+    lng: number;
+    score: number;
+    p_hotspot: number;
+    level: "High" | "Moderate" | "Low";
+    weather: {
+      weather_code: number;
+      wind_speed: number;
+      wind_direction_10m: number;
+      pressure: number;
+      precip: number;
+      cloud_cover: number;
+      temperature_2m: number;
+      relative_humidity_2m: number;
+    };
+    features_used: Record<string, number | string>;
+  };
+}
+
+// ── Favourite Spots ───────────────────────────────────────────────────────────
+export interface SavedSpot {
+  id: string;
+  name: string;
+  lat: number;
+  lng: number;
+  total_kg: number;
+  created_at: string;
+}
+
+export async function listSpots(): Promise<SavedSpot[]> {
+  const res = await api.get("/api/v1/spots");
+  return res.data as SavedSpot[];
+}
+
+export async function saveSpot(
+  name: string,
+  lat: number,
+  lng: number,
+  total_kg: number = 0,
+): Promise<SavedSpot> {
+  const res = await api.post("/api/v1/spots", { name, lat, lng, total_kg });
+  return res.data as SavedSpot;
+}
+
+export async function deleteSpot(spotId: string): Promise<void> {
+  await api.delete(`/api/v1/spots/${spotId}`);
+}
+
+export async function predictFromPoint({
+  lat,
+  lng,
+  species = "YFT",
+  threshold = 0.4,
+  n_points = 20,
+  radius_km = 10.0,
+  signal,
+}: {
+  lat: number;
+  lng: number;
+  species?: string;
+  threshold?: number;
+  n_points?: number;
+  radius_km?: number;
+  signal?: AbortSignal;
+}) {
+  const res = await api.post(
+    "/api/v1/hotspots/predict-from-point",
+    {
+      lat,
+      lon: lng,
+      species,
+      threshold,
+      n_points,
+      radius_km,
+    },
+    { signal },
+  );
+  return res.data;
+}
+
+export async function startPredictJob({
+  lat,
+  lng,
+  species = "YFT",
+  threshold = 0.4,
+  n_points = 20,
+  radius_km = 10.0,
+  signal,
+}: {
+  lat: number;
+  lng: number;
+  species?: string;
+  threshold?: number;
+  n_points?: number;
+  radius_km?: number;
+  signal?: AbortSignal;
+}) {
+  const res = await api.post(
+    "/api/v1/hotspots/predict-from-point-job",
+    {
+      lat,
+      lon: lng,
+      species,
+      threshold,
+      n_points,
+      radius_km,
+    },
+    { signal },
+  );
+  return res.data;
+}
+
+export async function getPredictJobStatus(jobId: string, signal?: AbortSignal) {
+  const res = await api.get(`/api/v1/hotspots/predict-job/${jobId}`, {
+    signal,
+  });
+  return res.data;
 }
 
 export default api;
