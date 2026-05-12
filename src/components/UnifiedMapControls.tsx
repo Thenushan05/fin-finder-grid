@@ -693,6 +693,7 @@ export default function UnifiedMapControls({ mapRef, onTopPrediction }: Props) {
   // Refs to track HTML overlay markers so we can remove them on clear
   const markerRefs = useRef<any[]>([]);
   const hotspotMarkerRefs = useRef<any[]>([]);
+  const scannerMarkerRefs = useRef<any[]>([]);
   // Abort controller ref for cancelling in-flight prediction
   const abortControllerRef = useRef<AbortController | null>(null);
 
@@ -1128,9 +1129,12 @@ export default function UnifiedMapControls({ mapRef, onTopPrediction }: Props) {
       // ── Filter out land points ──────────────────────────────────────────
       // GEBCO depth convention: negative = ocean, positive/zero = land/above sea level.
       // Keep points where depth is unknown (null/undefined) as benefit of the doubt.
-      const waterPredictions = (result.predictions ?? []).filter(
-        (p: any) => p.depth == null || Number(p.depth) < 0,
-      );
+      const waterPredictions = (result.predictions ?? []).filter((p: any) => {
+        if (p.ocean_verified === true) return true;
+        const d = p.depth != null ? Number(p.depth) : null;
+        if (d === null) return true; // Benefit of doubt
+        return d < 0 || d > 10; // Negative is ocean, >10 is usually ocean too if it's positive depth
+      });
       result.predictions = waterPredictions;
       if (result.total_points != null) {
         result.total_points = waterPredictions.length;
@@ -1255,17 +1259,20 @@ export default function UnifiedMapControls({ mapRef, onTopPrediction }: Props) {
     if (!map) return;
 
     // Filter land points — depth negative = ocean, positive/0 = land (GEBCO convention)
-    const waterOnly = predictions.filter(
-      (p: any) => p.depth == null || Number(p.depth) < 0,
-    );
+    const waterOnly = predictions.filter((p: any) => {
+      if (p.ocean_verified === true) return true;
+      const d = p.depth != null ? Number(p.depth) : null;
+      if (d === null) return true;
+      return d < 0 || d > 10;
+    });
     predictions = waterOnly;
 
     // Remove any old markers first
     markerRefs.current.forEach((m) => m.remove());
     markerRefs.current = [];
 
-    if (map.getLayer("sampledPath-layer")) map.removeLayer("sampledPath-layer");
-    if (map.getSource("sampledPath")) map.removeSource("sampledPath");
+    if (map.getLayer("sampledPoints-layer")) map.removeLayer("sampledPoints-layer");
+    if (map.getSource("sampledPoints")) map.removeSource("sampledPoints");
 
     let tempHasDanger = false;
     predictions.forEach((p) => {
@@ -1280,6 +1287,10 @@ export default function UnifiedMapControls({ mapRef, onTopPrediction }: Props) {
       }
     });
     setHasDangerZone(tempHasDanger);
+
+    // Remove any old scanner markers
+    scannerMarkerRefs.current.forEach((m) => m.remove());
+    scannerMarkerRefs.current = [];
 
     const metaSpecies = scanMeta?.species ?? species;
     const metaThresh = scanMeta?.threshold ?? threshold;
@@ -1330,6 +1341,63 @@ export default function UnifiedMapControls({ mapRef, onTopPrediction }: Props) {
         };
       }),
     };
+
+    // Add markers (badges) for better visibility
+    predictions.forEach((p) => {
+      const level = String(p.hotspot_level ?? "");
+      const score = Number(p.score ?? 0);
+      const pct = Math.round(score * 100);
+      const isSpawning = p.spawning === true || level.includes("spawn");
+      const isDanger = level.includes("danger") || level.includes("high");
+
+      let bubble: string;
+      if (isSpawning || isDanger) {
+        bubble = `
+<div style="font-family:system-ui,sans-serif;cursor:pointer;padding-bottom:8px;">
+  <div style="filter:drop-shadow(0 4px 6px rgba(239,68,68,0.4));">
+    <div style="background:#fff; border-radius:30px; padding:3px; position:relative;">
+      <div style="position:absolute; bottom:-6px; left:50%; margin-left:-7px; width:14px; height:14px; transform:rotate(45deg); background:#fff; z-index:1; border-radius:2px;"></div>
+      <div style="background:#ef4444; color:#fff; border-radius:27px; padding:5px 16px; text-align:center; position:relative; z-index:2;">
+        <div style="font-size:9px;font-weight:800;letter-spacing:0.06em;opacity:0.95;margin-bottom:1px;">
+          <span style="font-size:9px;">▵</span> DANGER
+        </div>
+        <div style="font-size:16px;font-weight:900;line-height:1.1;letter-spacing:0.02em;">SPAWN</div>
+        <div style="position:absolute; bottom:-7px; left:50%; margin-left:-5px; width:10px; height:10px; transform:rotate(45deg); background:#ef4444; z-index:3; border-radius:1px;"></div>
+      </div>
+    </div>
+  </div>
+</div>`;
+      } else {
+        const bg =
+          score >= 0.7 ? "#16a34a" : score >= 0.4 ? "#eab308" : "#ef4444";
+        bubble = `
+<div style="font-family:system-ui,sans-serif;cursor:pointer;padding-bottom:8px;">
+  <div style="filter:drop-shadow(0 4px 6px rgba(0,0,0,0.25));">
+    <div style="background:#fff; border-radius:30px; padding:3px; position:relative;">
+      <div style="position:absolute; bottom:-6px; left:50%; margin-left:-7px; width:14px; height:14px; transform:rotate(45deg); background:#fff; z-index:1; border-radius:2px;"></div>
+      <div style="background:${bg}; color:#fff; border-radius:27px; padding:4px 12px; text-align:center; position:relative; z-index:2;">
+        <div style="font-size:9px;font-weight:800;letter-spacing:0.06em;opacity:0.95;margin-bottom:1px;">CONF</div>
+        <div style="font-size:18px;font-weight:900;line-height:1.1;">${pct}%</div>
+        <div style="position:absolute; bottom:-7px; left:50%; margin-left:-5px; width:10px; height:10px; transform:rotate(45deg); background:${bg}; z-index:3; border-radius:1px;"></div>
+      </div>
+    </div>
+  </div>
+</div>`;
+      }
+
+      const el = document.createElement("div");
+      el.innerHTML = bubble;
+
+      const marker = new mapboxgl.Marker({
+        element: el,
+        anchor: "bottom",
+        offset: [0, -5],
+      })
+        .setLngLat([p.lon, p.lat])
+        .addTo(map);
+
+      scannerMarkerRefs.current.push(marker);
+    });
     if (map.getSource("sampledPoints")) {
       (map.getSource("sampledPoints") as any).setData(geojson);
     } else {
@@ -2080,11 +2148,19 @@ export default function UnifiedMapControls({ mapRef, onTopPrediction }: Props) {
         </div>
       )}
       <div
-        className={`absolute top-6 left-6 w-96 transition-all duration-300 ease-in-out z-30 font-sans flex flex-col ${isExpanded ? "bg-slate-900/95 backdrop-blur-md shadow-2xl border border-slate-700/50 rounded-2xl max-h-[580px]" : "bg-transparent pointer-events-none"}`}
+        className={`absolute top-4 md:top-6 left-4 md:left-6 right-4 md:right-auto md:w-96 transition-all duration-300 ease-in-out z-30 font-sans flex flex-col ${
+          isExpanded
+            ? "bg-slate-900/95 backdrop-blur-md shadow-2xl border border-slate-700/50 rounded-2xl max-h-[calc(100vh-120px)] md:max-h-[620px] overflow-hidden pointer-events-auto"
+            : "bg-transparent pointer-events-none"
+        }`}
       >
         {/* Header Button (Always Visible - but handles its own layout when collapsed) */}
         <div
-          className={`flex items-center justify-between p-2 cursor-pointer pointer-events-auto ${!isExpanded ? "bg-slate-900/95 backdrop-blur-md rounded-xl shadow-lg border border-slate-700/50 w-auto inline-flex" : ""}`}
+          className={`flex items-center justify-between p-2 md:p-2.5 cursor-pointer pointer-events-auto ${
+            !isExpanded
+              ? "bg-slate-900/95 backdrop-blur-md rounded-xl shadow-lg border border-slate-700/50 w-auto inline-flex"
+              : ""
+          }`}
           onClick={() => setIsExpanded(!isExpanded)}
         >
           <div className="flex items-center gap-2">
@@ -2113,7 +2189,7 @@ export default function UnifiedMapControls({ mapRef, onTopPrediction }: Props) {
 
         {/* Expanded Content */}
         {isExpanded && (
-          <div className="p-4 pt-0 animate-in fade-in slide-in-from-top-2 duration-300 pointer-events-auto overflow-y-auto flex-1 min-h-0 [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:bg-slate-700 [&::-webkit-scrollbar-thumb]:rounded-full">
+          <div className="px-4 pb-12 pt-0 animate-in fade-in slide-in-from-top-2 duration-300 pointer-events-auto overflow-y-auto flex-1 min-h-0 touch-pan-y [&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar-thumb]:bg-slate-700 [&::-webkit-scrollbar-thumb]:rounded-full">
             <Tabs
               defaultValue="hotspots"
               className="w-full"
