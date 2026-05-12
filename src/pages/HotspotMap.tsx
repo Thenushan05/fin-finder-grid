@@ -1532,320 +1532,8 @@ export default function HotspotMap() {
   return (
     <div className="space-y-6">
       {/* Map Container - Full Width */}
-      <Card className="border-border overflow-hidden">
-        <CardContent className="p-0 h-[600px] relative">
-          {/* Risk Warning Overlay (Top Center) */}
-          {(() => {
-            // Find the currently selected route's stats
-            const currentRoute =
-              alternativeRoutes.length > 0
-                ? alternativeRoutes.find(
-                    (r) => r.routeType === selectedRouteType,
-                  )
-                : routeSummary
-                  ? {
-                      counts: routeSummary.counts,
-                      hazardScore: 0, // Not needed for this check
-                    }
-                  : null;
-
-            if (!currentRoute) return null;
-
-            const hasHighRisk =
-              currentRoute.counts.HIGH > 0 || currentRoute.counts.DANGER > 0;
-            const hasMediumRisk = currentRoute.counts.MEDIUM > 0;
-
-            if (hasHighRisk) {
-              return (
-                <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 animate-in slide-in-from-top-4 fade-in duration-300">
-                  <div className="flex items-center gap-3 bg-red-600 text-white px-6 py-3 rounded-full shadow-xl border-2 border-red-400 animate-pulse">
-                    <AlertTriangle className="h-6 w-6 fill-white text-red-600" />
-                    <div className="flex flex-col">
-                      <span className="font-black text-sm uppercase tracking-wider">
-                        Warning: High Risk Path
-                      </span>
-                      <span className="text-xs font-medium opacity-90">
-                        Experienced sailors only. Proceed with extreme caution.
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              );
-            }
-
-            if (hasMediumRisk) {
-              return (
-                <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 animate-in slide-in-from-top-4 fade-in duration-300">
-                  <div className="flex items-center gap-3 bg-orange-500 text-white px-6 py-3 rounded-full shadow-xl border-2 border-orange-300">
-                    <AlertTriangle className="h-6 w-6 fill-white text-orange-500" />
-                    <div className="flex flex-col">
-                      <span className="font-black text-sm uppercase tracking-wider">
-                        Warning: Medium Risk Path
-                      </span>
-                      <span className="text-xs font-medium opacity-90">
-                        Moderate conditions. Experienced sailors only.
-                      </span>
-                    </div>
-                  </div>
-                </div>
-              );
-            }
-
-            return null;
-          })()}
-
-          {/* Route Status Legend (overlaid on map) */}
-          {alternativeRoutes.length > 1 && (
-            <div className="absolute top-4 left-4 z-10 bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm rounded-lg shadow-lg border-2 border-slate-200 dark:border-slate-700 p-4 max-w-sm">
-              {selectedRouteType === "main" ? (
-                <div className="space-y-3">
-                  <div className="flex items-center gap-3">
-                    <div className="w-4 h-4 bg-gray-500 rounded"></div>
-                    <span className="text-sm font-bold text-gray-700 dark:text-gray-200">
-                      Direct Route Selected
-                    </span>
-                  </div>
-                  <p className="text-xs text-gray-600 dark:text-gray-300 leading-snug">
-                    ✅ Direct route is the safest option for this trip.
-                  </p>
-                </div>
-              ) : (
-                (() => {
-                  const mainRoute = alternativeRoutes.find(
-                    (r) => r.routeType === "main",
-                  );
-                  if (!mainRoute) return null;
-
-                  const total =
-                    mainRoute.counts.LOW +
-                    mainRoute.counts.MEDIUM +
-                    mainRoute.counts.HIGH +
-                    mainRoute.counts.DANGER;
-                  const mediumHighPercent =
-                    ((mainRoute.counts.MEDIUM +
-                      mainRoute.counts.HIGH +
-                      mainRoute.counts.DANGER) /
-                      total) *
-                    100;
-                  const highDangerPercent =
-                    ((mainRoute.counts.HIGH + mainRoute.counts.DANGER) /
-                      total) *
-                    100;
-
-                  let riskLabel = "Elevated Risk";
-                  let riskColor = "text-yellow-700";
-                  let dashColor = "bg-yellow-600";
-
-                  if (highDangerPercent > 20) {
-                    riskLabel = "High Risk";
-                    riskColor = "text-red-700";
-                    dashColor = "bg-red-600";
-                  } else if (mediumHighPercent > 30) {
-                    riskLabel = "Moderate Risk";
-                    riskColor = "text-orange-700";
-                    dashColor = "bg-orange-600";
-                  }
-
-                  return (
-                    <div className="space-y-3">
-                      <div className="flex items-center gap-3">
-                        <div
-                          className={`w-8 h-1 ${dashColor} opacity-40`}
-                          style={{ borderStyle: "dashed" }}
-                        ></div>
-                        <span
-                          className={`text-sm font-bold ${
-                            riskColor === "text-red-700"
-                              ? "text-red-700 dark:text-red-400"
-                              : riskColor === "text-orange-700"
-                                ? "text-orange-700 dark:text-orange-400"
-                                : "text-yellow-700 dark:text-yellow-400"
-                          }`}
-                        >
-                          Original Route ({riskLabel})
-                        </span>
-                      </div>
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-1.5 bg-green-500 rounded"></div>
-                        <span className="text-sm font-bold text-green-700 dark:text-green-400">
-                          Suggested:{" "}
-                          {selectedRouteType === "north"
-                            ? "Northern"
-                            : "Southern"}{" "}
-                          Route
-                        </span>
-                      </div>
-                      <p className="text-xs text-gray-700 dark:text-gray-300 leading-snug">
-                        ✅ Safer alternative ~22 km{" "}
-                        {selectedRouteType === "north" ? "north" : "south"} with
-                        lower hazard exposure.
-                      </p>
-                    </div>
-                  );
-                })()
-              )}
-            </div>
-          )}
-
-          {/* No Safe Route Warning */}
-          {alternativeRoutes.length > 1 &&
-            (() => {
-              const allRoutesHighRisk = alternativeRoutes.every((r) => {
-                const total =
-                  r.counts.LOW +
-                  r.counts.MEDIUM +
-                  r.counts.HIGH +
-                  r.counts.DANGER;
-                return (r.counts.HIGH + r.counts.DANGER) / total > 0.4; // More than 40% high risk
-              });
-
-              if (allRoutesHighRisk) {
-                return (
-                  <div className="absolute bottom-12 left-4 z-10 bg-red-600 text-white rounded-xl shadow-xl border-2 border-red-800 p-4 max-w-sm">
-                    <div className="flex items-start gap-3">
-                      <span className="text-2xl">⛔</span>
-                      <div>
-                        <p className="text-base font-bold mb-1">
-                          No Safe Route Found
-                        </p>
-                        <p className="text-sm leading-snug">
-                          All routes have high-risk conditions.{" "}
-                          <strong>Please delay your trip</strong> or follow
-                          official weather warnings.
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                );
-              }
-              return null;
-            })()}
-
-          {/* Geolocation overlay (retry / status) */}
-          <div className="absolute top-4 right-14 z-20">
-            <div className="glass-card p-3 rounded-xl shadow-lg border border-white/40 dark:border-slate-700 backdrop-blur-md bg-white/95 dark:bg-slate-900/95 flex flex-col gap-2 min-w-[200px]">
-              {userLocation ? (
-                <>
-                  <div className="flex items-center justify-between gap-4 border-b border-slate-200 dark:border-slate-700 pb-2">
-                    <div className="flex items-center gap-2">
-                      <span className="relative flex h-2.5 w-2.5">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
-                        <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-green-500"></span>
-                      </span>
-                      <span className="text-xs font-bold text-slate-700 dark:text-slate-200">
-                        Using your location
-                      </span>
-                    </div>
-                  </div>
-
-                  <div className="flex flex-col gap-1">
-                    <div className="text-[10px] font-mono text-slate-500 dark:text-slate-400 flex justify-between">
-                      <span>Lat: {userLocation.lat.toFixed(4)}</span>
-                      <span>Lng: {userLocation.lng.toFixed(4)}</span>
-                    </div>
-                    {userLocationMeta?.accuracy && (
-                      <div className="text-[10px] text-slate-400 text-right">
-                        ±{userLocationMeta.accuracy.toFixed(0)}m accuracy
-                      </div>
-                    )}
-                  </div>
-
-                  <div className="flex gap-2 mt-1">
-                    <button
-                      className="flex-1 flex items-center justify-center gap-1.5 text-xs bg-blue-600 hover:bg-blue-700 text-white py-1.5 px-2 rounded-lg transition-colors shadow-sm"
-                      onClick={() => {
-                        setViewState({
-                          ...viewState,
-                          longitude: userLocation.lng,
-                          latitude: userLocation.lat,
-                          zoom: 10,
-                        });
-                      }}
-                      title="Recenter Map"
-                    >
-                      <Crosshair className="w-3.5 h-3.5" />
-                      Recenter
-                    </button>
-                    <button
-                      className="flex items-center justify-center p-1.5 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg border border-slate-200 transition-colors"
-                      onClick={() => {
-                        setUserLocation({
-                          lat: viewState.latitude,
-                          lng: viewState.longitude,
-                        });
-                        setUserLocationMeta({
-                          source: "manual",
-                          timestamp: Date.now(),
-                          accuracy: null,
-                        });
-                        setGeolocationError(null);
-                      }}
-                      title="Set Location to Map Center"
-                    >
-                      <Move className="w-4 h-4" />
-                    </button>
-                  </div>
-                </>
-              ) : (
-                <>
-                  <button
-                    className="w-full flex items-center justify-center gap-2 text-xs font-bold bg-purple-600 hover:bg-purple-700 text-white py-2 px-3 rounded-lg shadow-md transition-all active:scale-95"
-                    onClick={() => requestGeolocation()}
-                  >
-                    <Locate className="w-4 h-4" />
-                    Use My Location
-                  </button>
-
-                  {geolocationError && (
-                    <div className="bg-red-50 border border-red-100 rounded p-1.5">
-                      <p className="text-[10px] text-red-600 leading-tight">
-                        {geolocationError}
-                      </p>
-                    </div>
-                  )}
-
-                  <button
-                    className="text-[10px] text-slate-500 hover:text-purple-600 underline decoration-dotted underline-offset-2 text-center transition-colors"
-                    onClick={() => {
-                      setUserLocation({
-                        lat: viewState.latitude,
-                        lng: viewState.longitude,
-                      });
-                      setUserLocationMeta({
-                        source: "manual",
-                        timestamp: Date.now(),
-                        accuracy: null,
-                      });
-                      setGeolocationError(null);
-                    }}
-                  >
-                    Or use map center instead
-                  </button>
-
-                  {manualDestination && (
-                    <button
-                      className="text-[10px] text-slate-500 hover:text-purple-600 underline decoration-dotted underline-offset-2 text-center transition-colors mt-1"
-                      onClick={() => {
-                        setUserLocation({
-                          lat: manualDestination.lat,
-                          lng: manualDestination.lng,
-                        });
-                        setUserLocationMeta({
-                          source: "manual",
-                          timestamp: Date.now(),
-                          accuracy: null,
-                        });
-                        setGeolocationError(null);
-                      }}
-                    >
-                      Use clicked point
-                    </button>
-                  )}
-                </>
-              )}
-            </div>
-          </div>
-
+      <Card className="border-border relative">
+        <CardContent className="p-0 h-[450px] md:h-[600px] rounded-xl overflow-hidden relative">
           <Map
             key={isDarkMode ? "dark-map" : "light-map"}
             {...viewState}
@@ -2148,7 +1836,7 @@ export default function HotspotMap() {
                 offset={10}
                 maxWidth="400px"
               >
-                <div className="glass-card rounded-xl shadow-xl overflow-hidden min-w-[320px] backdrop-blur-md bg-white dark:bg-slate-900/95 border border-slate-200 dark:border-slate-700/50">
+                <div className="glass-card rounded-xl shadow-xl overflow-hidden min-w-[280px] sm:min-w-[320px] backdrop-blur-md bg-white dark:bg-slate-900/95 border border-slate-200 dark:border-slate-700/50">
                   {/* Header with Risk Level */}
                   <div
                     className={`px-4 py-3 flex items-center justify-between border-b ${
@@ -2479,107 +2167,139 @@ export default function HotspotMap() {
               </>
             )}
           </Map>
-
-          {/* Jaffna controls overlay - passes the mapRef so it can add/update hotspot layer */}
-          <UnifiedMapControls
-            mapRef={mapRef}
-            onTopPrediction={(hotspot) => {
-              setSelectedHotspot(hotspot);
-              setManualDestination(null);
-            }}
-          />
-
-          {/* Maritime Boundary Legend Overlay */}
-          <div className="absolute bottom-6 right-6 z-20 pointer-events-none">
-            <div className="glass-card bg-white/95 dark:bg-slate-900/95 backdrop-blur-md p-3 rounded-xl shadow-lg border border-slate-200 dark:border-slate-700 pointer-events-auto flex flex-col gap-1.5 min-w-[220px]">
-              <div className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1 px-1 flex items-center gap-1.5">
-                <Flag className="w-3 h-3" />
-                <span>Fishing Boundaries</span>
-              </div>
-
-              <button
-                onClick={() => setShow12nm((v) => !v)}
-                className={`flex items-center gap-2.5 px-1 py-1 rounded transition-colors text-left w-full ${show12nm ? "hover:bg-slate-50 dark:hover:bg-slate-800" : "opacity-40 hover:opacity-60 hover:bg-slate-50 dark:hover:bg-slate-800"}`}
-                title="Toggle Territorial Sea boundary"
-              >
-                <div
-                  className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${show12nm ? "bg-[#1d4ed8]/20 border-[#1d4ed8]" : "bg-slate-200 border-slate-400 dark:bg-slate-700 dark:border-slate-500"}`}
-                >
-                  <div
-                    className={`w-1.5 h-1.5 rounded-full transition-colors ${show12nm ? "bg-[#1d4ed8]" : "bg-slate-400"}`}
-                  ></div>
-                </div>
-                <div className="flex flex-col">
-                  <span className="text-xs font-bold text-slate-800 dark:text-slate-200 leading-none">
-                    Territorial Sea
-                  </span>
-                  <span className="text-[10px] text-slate-500 leading-none mt-1">
-                    12 Nautical Miles
-                  </span>
-                </div>
-                <span
-                  className={`ml-auto text-[10px] font-medium ${show12nm ? "text-[#1d4ed8]" : "text-slate-400"}`}
-                >
-                  {show12nm ? "ON" : "OFF"}
-                </span>
-              </button>
-
-              <button
-                onClick={() => setShow24nm((v) => !v)}
-                className={`flex items-center gap-2.5 px-1 py-1 rounded transition-colors text-left w-full ${show24nm ? "hover:bg-slate-50 dark:hover:bg-slate-800" : "opacity-40 hover:opacity-60 hover:bg-slate-50 dark:hover:bg-slate-800"}`}
-                title="Toggle Contiguous Zone boundary"
-              >
-                <div
-                  className={`w-4 h-4 rounded border flex items-center justify-center transition-colors ${show24nm ? "bg-[#3b82f6]/20 border-[#3b82f6]" : "bg-slate-200 border-slate-400 dark:bg-slate-700 dark:border-slate-500"}`}
-                >
-                  <div
-                    className={`w-1.5 h-1.5 rounded-full transition-colors ${show24nm ? "bg-[#3b82f6]" : "bg-slate-400"}`}
-                  ></div>
-                </div>
-                <div className="flex flex-col">
-                  <span className="text-xs font-bold text-slate-800 dark:text-slate-200 leading-none">
-                    Contiguous Zone
-                  </span>
-                  <span className="text-[10px] text-slate-500 leading-none mt-1">
-                    24 Nautical Miles
-                  </span>
-                </div>
-                <span
-                  className={`ml-auto text-[10px] font-medium ${show24nm ? "text-[#3b82f6]" : "text-slate-400"}`}
-                >
-                  {show24nm ? "ON" : "OFF"}
-                </span>
-              </button>
-
-              <button
-                onClick={() => setShowEEZ((v) => !v)}
-                className={`flex items-center gap-2.5 px-1 py-1 rounded transition-colors text-left w-full ${showEEZ ? "hover:bg-slate-50 dark:hover:bg-slate-800" : "opacity-40 hover:opacity-60 hover:bg-slate-50 dark:hover:bg-slate-800"}`}
-                title="Toggle EEZ boundary"
-              >
-                <div
-                  className={`w-4 h-4 rounded border-dashed border flex items-center justify-center transition-colors ${showEEZ ? "bg-[#ef4444]/10 border-[#ef4444]" : "bg-slate-200 border-slate-400 dark:bg-slate-700 dark:border-slate-500"}`}
-                >
-                  <div
-                    className={`w-1.5 h-1.5 rounded-full transition-colors ${showEEZ ? "bg-[#ef4444]" : "bg-slate-400"}`}
-                  ></div>
-                </div>
-                <div className="flex flex-col">
-                  <span className="text-xs font-bold text-slate-800 dark:text-slate-200 leading-none">
-                    EEZ (Fishing Border)
-                  </span>
-                  <span className="text-[10px] text-slate-500 leading-none mt-1">
-                    Exclusive Economic Zone
-                  </span>
-                </div>
-                <span
-                  className={`ml-auto text-[10px] font-medium ${showEEZ ? "text-[#ef4444]" : "text-slate-400"}`}
-                >
-                  {showEEZ ? "ON" : "OFF"}
-                </span>
-              </button>
-            </div>
-          </div>
         </CardContent>
+
+
+        {/* --- ABSOLUTE OVERLAYS (Outside CardContent to avoid clipping) --- */}
+
+        {/* Risk Warning Overlay */}
+        {(() => {
+          const currentRoute = alternativeRoutes.length > 0
+            ? alternativeRoutes.find((r) => r.routeType === selectedRouteType)
+            : routeSummary ? { counts: routeSummary.counts } : null;
+
+          if (!currentRoute) return null;
+          const hasHighRisk = currentRoute.counts.HIGH > 0 || currentRoute.counts.DANGER > 0;
+          const hasMediumRisk = currentRoute.counts.MEDIUM > 0;
+
+          if (hasHighRisk) return (
+            <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 animate-in slide-in-from-top-4 fade-in duration-300">
+              <div className="flex items-center gap-3 bg-red-600 text-white px-6 py-3 rounded-full shadow-xl border-2 border-red-400 animate-pulse">
+                <AlertTriangle className="h-6 w-6 fill-white text-red-600" />
+                <div className="flex flex-col">
+                  <span className="font-black text-sm uppercase tracking-wider">Warning: High Risk Path</span>
+                  <span className="text-xs font-medium opacity-90">Experienced sailors only. Proceed with extreme caution.</span>
+                </div>
+              </div>
+            </div>
+          );
+          if (hasMediumRisk) return (
+            <div className="absolute top-4 left-1/2 -translate-x-1/2 z-30 animate-in slide-in-from-top-4 fade-in duration-300">
+              <div className="flex items-center gap-3 bg-orange-500 text-white px-6 py-3 rounded-full shadow-xl border-2 border-orange-300">
+                <AlertTriangle className="h-6 w-6 fill-white text-orange-500" />
+                <div className="flex flex-col">
+                  <span className="font-black text-sm uppercase tracking-wider">Warning: Medium Risk Path</span>
+                  <span className="text-xs font-medium opacity-90">Moderate conditions. Experienced sailors only.</span>
+                </div>
+              </div>
+            </div>
+          );
+          return null;
+        })()}
+
+        {/* Route Status Legend */}
+        {alternativeRoutes.length > 1 && (
+          <div className="absolute top-16 left-4 md:top-4 md:left-4 z-10 bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm rounded-lg shadow-lg border-2 border-slate-200 dark:border-slate-700 p-3 md:p-4 max-w-[calc(100%-2rem)] md:max-w-sm pointer-events-auto">
+            {selectedRouteType === "main" ? (
+              <div className="space-y-2">
+                <div className="flex items-center gap-3">
+                  <div className="w-4 h-4 bg-gray-500 rounded"></div>
+                  <span className="text-sm font-bold text-gray-700 dark:text-gray-200">Direct Route Selected</span>
+                </div>
+                <p className="text-xs text-gray-600 dark:text-gray-300 leading-snug">✅ Direct route is the safest option for this trip.</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-1.5 bg-green-500 rounded"></div>
+                  <span className="text-sm font-bold text-green-700 dark:text-green-400">
+                    Suggested: {selectedRouteType === "north" ? "Northern" : "Southern"} Route
+                  </span>
+                </div>
+                <p className="text-xs text-gray-700 dark:text-gray-300 leading-snug">✅ Safer alternative with lower hazard exposure.</p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Geolocation overlay */}
+        <div className="absolute top-4 right-12 md:top-6 md:right-16 z-20 pointer-events-auto">
+          <div className="glass-card p-2 md:p-3 rounded-xl shadow-lg border border-white/40 dark:border-slate-700 backdrop-blur-md bg-white/95 dark:bg-slate-900/95 flex flex-col gap-2 min-w-[160px] md:min-w-[200px]">
+            {userLocation ? (
+              <>
+                <div className="flex items-center justify-between gap-4 border-b border-slate-200 dark:border-slate-700 pb-2">
+                  <div className="flex items-center gap-2">
+                    <span className="relative flex h-2.5 w-2.5">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-green-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-green-500"></span>
+                    </span>
+                    <span className="text-xs font-bold text-slate-700 dark:text-slate-200">Using your location</span>
+                  </div>
+                </div>
+                <div className="flex gap-2 mt-1">
+                  <button
+                    className="flex-1 flex items-center justify-center gap-1.5 text-xs bg-blue-600 hover:bg-blue-700 text-white py-1.5 px-2 rounded-lg transition-colors shadow-sm"
+                    onClick={() => setViewState({ ...viewState, longitude: userLocation.lng, latitude: userLocation.lat, zoom: 10 })}
+                  >
+                    <Crosshair className="w-3.5 h-3.5" /> Recenter
+                  </button>
+                </div>
+              </>
+            ) : (
+              <button
+                className="w-full flex items-center justify-center gap-2 text-xs font-bold bg-purple-600 hover:bg-purple-700 text-white py-2 px-3 rounded-lg shadow-md transition-all active:scale-95"
+                onClick={() => requestGeolocation()}
+              >
+                <Locate className="w-4 h-4" /> Use My Location
+              </button>
+            )}
+          </div>
+        </div>
+
+        <UnifiedMapControls
+          mapRef={mapRef}
+          onTopPrediction={(hotspot) => {
+            setSelectedHotspot(hotspot);
+            setManualDestination(null);
+          }}
+        />
+
+        {/* Maritime Boundary Legend Overlay */}
+        <div className="absolute bottom-4 right-4 md:bottom-6 md:right-6 z-20 pointer-events-none">
+          <div className="glass-card bg-white/95 dark:bg-slate-900/95 backdrop-blur-md p-2 md:p-3 rounded-xl shadow-lg border border-slate-200 dark:border-slate-700 pointer-events-auto flex flex-col gap-1.5 min-w-[180px] md:min-w-[220px]">
+            <div className="text-[10px] font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1 px-1 flex items-center gap-1.5">
+              <Flag className="w-3 h-3" /> <span>Fishing Boundaries</span>
+            </div>
+            <button
+              onClick={() => setShow12nm((v) => !v)}
+              className={`flex items-center gap-2.5 px-1 py-1 rounded transition-colors text-left w-full ${show12nm ? "hover:bg-slate-50 dark:hover:bg-slate-800" : "opacity-40 hover:opacity-60"}`}
+            >
+              <div className={`w-4 h-4 rounded border flex items-center justify-center ${show12nm ? "bg-[#1d4ed8]/20 border-[#1d4ed8]" : "bg-slate-200"}`}>
+                <div className={`w-1.5 h-1.5 rounded-full ${show12nm ? "bg-[#1d4ed8]" : "bg-slate-400"}`}></div>
+              </div>
+              <span className="text-xs font-bold text-slate-800 dark:text-slate-200">12NM Territorial Sea</span>
+            </button>
+            <button
+              onClick={() => setShowEEZ((v) => !v)}
+              className={`flex items-center gap-2.5 px-1 py-1 rounded transition-colors text-left w-full ${showEEZ ? "hover:bg-slate-50 dark:hover:bg-slate-800" : "opacity-40 hover:opacity-60"}`}
+            >
+              <div className={`w-4 h-4 rounded border flex items-center justify-center ${showEEZ ? "bg-[#ef4444]/20 border-[#ef4444]" : "bg-slate-200"}`}>
+                <div className={`w-1.5 h-1.5 rounded-full ${showEEZ ? "bg-[#ef4444]" : "bg-slate-400"}`}></div>
+              </div>
+              <span className="text-xs font-bold text-slate-800 dark:text-slate-200">200NM EEZ Border</span>
+            </button>
+          </div>
+        </div>
       </Card>
 
       {/* Route Safety Summary (modern, compact) */}
@@ -2651,7 +2371,7 @@ export default function HotspotMap() {
                           }
                         }
                       }}
-                      className={`relative cursor-pointer group transition-all duration-200 hover:-translate-y-1 hover:shadow-md rounded-xl border-2 ${borderColor} bg-white dark:bg-slate-800 p-4`}
+                      className={`relative cursor-pointer group transition-all duration-200 hover:-translate-y-1 hover:shadow-md rounded-xl border-2 ${borderColor} bg-white dark:bg-slate-800 p-3 md:p-4`}
                     >
                       {isSafest && (
                         <div className="absolute -top-3 left-1/2 -translate-x-1/2 bg-green-600 text-white text-[10px] font-bold px-2 py-1 rounded-full shadow-sm flex items-center gap-1">
