@@ -1530,10 +1530,10 @@ export default function HotspotMap() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 relative">
       {/* Map Container - Full Width */}
       <Card className="border-border overflow-hidden">
-        <CardContent className="p-0 h-[600px] relative">
+        <CardContent className="p-0 h-[500px] md:h-[750px] relative">
           {/* Risk Warning Overlay (Top Center) */}
           {(() => {
             // Find the currently selected route's stats
@@ -1596,7 +1596,7 @@ export default function HotspotMap() {
 
           {/* Route Status Legend (overlaid on map) */}
           {alternativeRoutes.length > 1 && (
-            <div className="absolute top-4 left-4 z-10 bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm rounded-lg shadow-lg border-2 border-slate-200 dark:border-slate-700 p-4 max-w-sm">
+            <div className="absolute top-4 left-4 md:top-6 md:left-6 z-10 bg-white/95 dark:bg-slate-900/95 backdrop-blur-sm rounded-lg shadow-lg border-2 border-slate-200 dark:border-slate-700 p-3 md:p-4 max-w-[200px] md:max-w-sm">
               {selectedRouteType === "main" ? (
                 <div className="space-y-3">
                   <div className="flex items-center gap-3">
@@ -1701,7 +1701,7 @@ export default function HotspotMap() {
 
               if (allRoutesHighRisk) {
                 return (
-                  <div className="absolute bottom-12 left-4 z-10 bg-red-600 text-white rounded-xl shadow-xl border-2 border-red-800 p-4 max-w-sm">
+                  <div className="absolute bottom-16 left-4 right-4 md:right-auto md:bottom-12 md:left-4 z-10 bg-red-600 text-white rounded-xl shadow-xl border-2 border-red-800 p-4 max-w-none md:max-w-sm">
                     <div className="flex items-start gap-3">
                       <span className="text-2xl">⛔</span>
                       <div>
@@ -1722,7 +1722,7 @@ export default function HotspotMap() {
             })()}
 
           {/* Geolocation overlay (retry / status) */}
-          <div className="absolute top-4 right-14 z-20">
+          <div className="absolute top-4 right-4 md:right-14 z-20">
             <div className="glass-card p-3 rounded-xl shadow-lg border border-white/40 dark:border-slate-700 backdrop-blur-md bg-white/95 dark:bg-slate-900/95 flex flex-col gap-2 min-w-[200px]">
               {userLocation ? (
                 <>
@@ -2480,14 +2480,7 @@ export default function HotspotMap() {
             )}
           </Map>
 
-          {/* Jaffna controls overlay - passes the mapRef so it can add/update hotspot layer */}
-          <UnifiedMapControls
-            mapRef={mapRef}
-            onTopPrediction={(hotspot) => {
-              setSelectedHotspot(hotspot);
-              setManualDestination(null);
-            }}
-          />
+
 
           {/* Maritime Boundary Legend Overlay */}
           <div className="absolute bottom-6 right-6 z-20 pointer-events-none">
@@ -2581,6 +2574,15 @@ export default function HotspotMap() {
           </div>
         </CardContent>
       </Card>
+
+      {/* Unified controls overlay - moved outside Card to avoid overflow clipping */}
+      <UnifiedMapControls
+        mapRef={mapRef}
+        onTopPrediction={(hotspot) => {
+          setSelectedHotspot(hotspot);
+          setManualDestination(null);
+        }}
+      />
 
       {/* Route Safety Summary (modern, compact) */}
       {routeSummary && (
