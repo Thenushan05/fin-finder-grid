@@ -385,6 +385,8 @@ export default function UnifiedMapControls({ mapRef, onTopPrediction }: Props) {
     "local",
   );
 
+  // ── Background Job Resume ───────────────────────────────────────────────
+  // Resumes a pending prediction if the user navigates away and comes back
   useEffect(() => {
     const rawJob = localStorage.getItem("fishspot_pending_job");
     if (!rawJob || validating) return;
@@ -457,8 +459,6 @@ export default function UnifiedMapControls({ mapRef, onTopPrediction }: Props) {
     } catch {}
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); // Run only on mount
-
-
 
   useEffect(() => {
     loadEEZ().then((data) => {
@@ -796,15 +796,6 @@ export default function UnifiedMapControls({ mapRef, onTopPrediction }: Props) {
       map.getCanvas().style.cursor = "";
     }
   }, [pickingDestination, mapRef]);
-
-  // Auto-hide panel when picking from map, and restore it after picking is done
-  useEffect(() => {
-    if (pickingDestination || isPickingFromMap) {
-      setIsExpanded(false);
-    } else {
-      setIsExpanded(true);
-    }
-  }, [pickingDestination, isPickingFromMap]);
 
   // Check destination coords immediately when user types/picks them — before scan button is clicked
   useEffect(() => {
@@ -2089,7 +2080,7 @@ export default function UnifiedMapControls({ mapRef, onTopPrediction }: Props) {
         </div>
       )}
       <div
-        className={`absolute top-4 left-4 right-4 md:right-auto md:w-96 transition-all duration-300 ease-in-out z-30 font-sans flex flex-col ${isExpanded ? "bg-slate-900/95 backdrop-blur-md shadow-2xl border border-slate-700/50 rounded-2xl max-h-[380px] md:max-h-[580px]" : "bg-transparent pointer-events-none"}`}
+        className={`absolute top-6 left-6 w-96 transition-all duration-300 ease-in-out z-30 font-sans flex flex-col ${isExpanded ? "bg-slate-900/95 backdrop-blur-md shadow-2xl border border-slate-700/50 rounded-2xl max-h-[580px]" : "bg-transparent pointer-events-none"}`}
       >
         {/* Header Button (Always Visible - but handles its own layout when collapsed) */}
         <div
