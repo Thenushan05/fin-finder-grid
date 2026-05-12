@@ -2,7 +2,7 @@ import axios from "axios";
 import tokenService from "./tokenService";
 
 // Base URL: use Vite env if provided, otherwise default to localhost:8000
-const BASE = (import.meta as any).env?.VITE_API_BASE || "http://localhost:8000";
+const BASE = (import.meta as any).env?.VITE_API_BASE || "https://fishspot-backend-production.up.railway.app";
 
 const api = axios.create({
   baseURL: BASE,
